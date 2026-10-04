@@ -1,0 +1,30 @@
+{
+    "name": "Saflivo/finance",
+    "description": "Saflivo fees, policies, assessments and payments domain.",
+    "authors": [
+        {
+            "name": "Safeer Aslam",
+            "email": "safeeraslamc@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Finance\\": "app/",
+            "Modules\\Finance\\Database\\Factories\\": "database/factories/",
+            "Modules\\Finance\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Finance\\Tests\\": "tests/"
+        }
+    }
+}

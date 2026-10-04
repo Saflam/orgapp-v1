@@ -1,0 +1,11 @@
+{
+    "name": "Member",
+    "alias": "member",
+    "description": "Saflivo member and membership domain.",
+    "keywords": ["Saflivo", "member", "membership"],
+    "priority": 0,
+    "providers": [
+        "Modules\\Member\\Providers\\MemberServiceProvider"
+    ],
+    "files": []
+}

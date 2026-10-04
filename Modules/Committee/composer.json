@@ -1,0 +1,30 @@
+{
+    "name": "Saflivo/committee",
+    "description": "Saflivo committee domain.",
+    "authors": [
+        {
+            "name": "Safeer Aslam",
+            "email": "safeeraslamc@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Committee\\": "app/",
+            "Modules\\Committee\\Database\\Factories\\": "database/factories/",
+            "Modules\\Committee\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Committee\\Tests\\": "tests/"
+        }
+    }
+}

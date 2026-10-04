@@ -1,0 +1,11 @@
+{
+    "name": "Committee",
+    "alias": "committee",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Committee\\Providers\\CommitteeServiceProvider"
+    ],
+    "files": []
+}

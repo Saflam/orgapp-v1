@@ -1,0 +1,11 @@
+{
+    "name": "Saradhi",
+    "alias": "saradhi",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Saradhi\\Providers\\SaradhiServiceProvider"
+    ],
+    "files": []
+}

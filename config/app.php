@@ -123,4 +123,13 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Deployment Modes (single, multi)
+    |--------------------------------------------------------------------------
+    */
+    'deployment_mode' => env('DEPLOYMENT_MODE', 'single'),
+    'organization_base_domain' => env('ORGANIZATION_BASE_DOMAIN'),
+    'default_organization_id' => env('DEFAULT_ORGANIZATION_ID'),
+
 ];

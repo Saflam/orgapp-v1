@@ -1,0 +1,30 @@
+{
+    "name": "Saflivo/member",
+    "description": "Saflivo member and membership domain.",
+    "authors": [
+        {
+            "name": "Safeer Aslam",
+            "email": "safeeraslamc@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Member\\": "app/",
+            "Modules\\Member\\Database\\Factories\\": "database/factories/",
+            "Modules\\Member\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Member\\Tests\\": "tests/"
+        }
+    }
+}

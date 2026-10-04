@@ -1,0 +1,11 @@
+{
+    "name": "Finance",
+    "alias": "finance",
+    "description": "Saflivo fees, policies, assessments and payments domain.",
+    "keywords": ["Saflivo", "finance", "fees", "payments"],
+    "priority": 0,
+    "providers": [
+        "Modules\\Finance\\Providers\\FinanceServiceProvider"
+    ],
+    "files": []
+}

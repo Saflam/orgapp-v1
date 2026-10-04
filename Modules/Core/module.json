@@ -1,0 +1,16 @@
+{
+    "name": "Core",
+    "alias": "core",
+    "description": "Saflivo core infrastructure: organizations and units.",
+    "keywords": [
+        "Saflivo",
+        "core",
+        "organization",
+        "unit"
+    ],
+    "priority": 0,
+    "providers": [
+        "Modules\\Core\\Providers\\CoreServiceProvider"
+    ],
+    "files": []
+}
