@@ -8,6 +8,11 @@ use Modules\Core\Models\RoleAssignment;
 
 class AuthorizationService
 {
+    public function __construct(
+        private AuthorizationContributorRegistry $contributorRegistry,
+    ) {
+    }
+
     public function can(
         User $user,
         string $permissionCode,
@@ -43,6 +48,12 @@ class AuthorizationService
 
         foreach ($assignments as $assignment) {
             if ($this->contextMatches($assignment, $context)) {
+                return true;
+            }
+        }
+
+        foreach ($this->contributorRegistry->all() as $contributor) {
+            if ($contributor->can($user, $permissionCode, $context)) {
                 return true;
             }
         }

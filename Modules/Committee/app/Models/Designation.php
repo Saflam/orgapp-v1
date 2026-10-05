@@ -5,6 +5,7 @@ namespace Modules\Committee\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Modules\Committee\Enums\DesignationScope;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Permission;
 
@@ -14,6 +15,7 @@ class Designation extends Model
         'organization_id',
         'name',
         'code',
+        'scope',
         'description',
         'is_active',
     ];
@@ -21,6 +23,7 @@ class Designation extends Model
     protected function casts(): array
     {
         return [
+            'scope' => DesignationScope::class,
             'is_active' => 'boolean',
         ];
     }

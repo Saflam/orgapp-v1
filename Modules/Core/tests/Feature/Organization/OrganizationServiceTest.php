@@ -4,8 +4,9 @@ namespace Modules\Core\Tests\Feature\Organization;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Organization;
-use Modules\Core\Services\OrganizationService;
 use Modules\Core\Services\AuthorizationDefinitionProvisioningService;
+use Modules\Core\Services\OrganizationModuleService;
+use Modules\Core\Services\OrganizationService;
 use Tests\TestCase;
 
 class OrganizationServiceTest extends TestCase
@@ -50,7 +51,7 @@ class OrganizationServiceTest extends TestCase
         ]);
     }
 
-    public function test_member_module_is_enabled_by_default(): void
+    public function test_required_modules_are_enabled_by_default(): void
     {
         $service = app(OrganizationService::class);
 
@@ -66,10 +67,33 @@ class OrganizationServiceTest extends TestCase
             ],
         ]);
 
+        $moduleService = app(OrganizationModuleService::class);
+
         $this->assertTrue(
-            app(\Modules\Core\Services\OrganizationModuleService::class)
-                ->isEnabled($organization, 'Member')
+            $moduleService->isEnabled(
+                $organization,
+                'Core',
+            )
         );
+
+        $this->assertTrue(
+            $moduleService->isEnabled(
+                $organization,
+                'Member',
+            )
+        );
+
+        $this->assertDatabaseHas('organization_modules', [
+            'organization_id' => $organization->id,
+            'module' => 'Core',
+            'is_enabled' => true,
+        ]);
+
+        $this->assertDatabaseHas('organization_modules', [
+            'organization_id' => $organization->id,
+            'module' => 'Member',
+            'is_enabled' => true,
+        ]);
     }
 
     public function test_optional_modules_are_disabled_by_default(): void
@@ -88,9 +112,7 @@ class OrganizationServiceTest extends TestCase
             ],
         ]);
 
-        $moduleService = app(
-            \Modules\Core\Services\OrganizationModuleService::class
-        );
+        $moduleService = app(OrganizationModuleService::class);
 
         $this->assertFalse(
             $moduleService->isEnabled(

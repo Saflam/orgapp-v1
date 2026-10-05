@@ -87,6 +87,11 @@ class CommitteeMembershipService
             );
         }
 
+        $this->ensureDesignationScopeMatchesCommittee(
+            $designation,
+            $membership->committeeTerm->committee,
+        );
+
         if ($membership->designation_id === $designation->id) {
             return $membership->refresh();
         }
@@ -149,6 +154,11 @@ class CommitteeMembershipService
                 'The designation does not belong to the committee organization.'
             );
         }
+
+        $this->ensureDesignationScopeMatchesCommittee(
+            $newDesignation,
+            $term->committee,
+        );
 
         $membershipStartDate = $membership->start_date;
 
@@ -238,6 +248,11 @@ class CommitteeMembershipService
             );
         }
 
+        $this->ensureDesignationScopeMatchesCommittee(
+            $designation,
+            $term->committee,
+        );
+
         $alreadyAssigned = CommitteeMembership::query()
             ->where('committee_term_id', $term->id)
             ->where('member_id', $member->id)
@@ -247,6 +262,29 @@ class CommitteeMembershipService
         if ($alreadyAssigned) {
             throw new \DomainException(
                 'This member already has a designation in this committee term.'
+            );
+        }
+    }
+
+    private function ensureDesignationScopeMatchesCommittee(
+        Designation $designation,
+        \Modules\Committee\Models\Committee $committee,
+    ): void {
+        if (
+            $designation->scope === \Modules\Committee\Enums\DesignationScope::CENTRAL
+            && $committee->unit_id !== null
+        ) {
+            throw new \DomainException(
+                'A central designation cannot be assigned to a unit committee.'
+            );
+        }
+
+        if (
+            $designation->scope === \Modules\Committee\Enums\DesignationScope::UNIT
+            && $committee->unit_id === null
+        ) {
+            throw new \DomainException(
+                'A unit designation cannot be assigned to a central committee.'
             );
         }
     }

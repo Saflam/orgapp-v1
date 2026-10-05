@@ -15,25 +15,24 @@ class MemberPermissionSeederTest extends TestCase
     {
         $this->seed(MemberPermissionSeeder::class);
 
-        $this->assertDatabaseHas('permissions', [
-            'module' => 'member',
-            'code' => 'members.view',
-        ]);
-
-        $this->assertDatabaseHas('permissions', [
-            'module' => 'member',
-            'code' => 'members.update',
-        ]);
-
-        $this->assertDatabaseHas('permissions', [
-            'module' => 'member',
-            'code' => 'members.profile.view',
-        ]);
-
-        $this->assertDatabaseHas('permissions', [
-            'module' => 'member',
-            'code' => 'members.profile.update',
-        ]);
+        foreach ([
+            'members.view',
+            'members.update',
+            'members.profile.view',
+            'members.profile.update',
+            'membership.application.view',
+            'membership.application.submit',
+            'membership.application.verify',
+            'membership.application.review',
+            'membership.application.approve',
+            'membership.application.receive-payment',
+            'membership.application.confirm',
+        ] as $code) {
+            $this->assertDatabaseHas('permissions', [
+                'module' => 'member',
+                'code' => $code,
+            ]);
+        }
     }
 
     public function test_member_permission_seeder_is_idempotent(): void
@@ -41,24 +40,20 @@ class MemberPermissionSeederTest extends TestCase
         $this->seed(MemberPermissionSeeder::class);
         $this->seed(MemberPermissionSeeder::class);
 
-        $this->assertSame(
-            1,
-            Permission::where('code', 'members.view')->count()
-        );
-
-        $this->assertSame(
-            1,
-            Permission::where('code', 'members.update')->count()
-        );
-
-        $this->assertSame(
-            1,
-            Permission::where('code', 'members.profile.view')->count()
-        );
-
-        $this->assertSame(
-            1,
-            Permission::where('code', 'members.profile.update')->count()
-        );
+        foreach ([
+            'members.view',
+            'members.update',
+            'members.profile.view',
+            'members.profile.update',
+            'membership.application.view',
+            'membership.application.submit',
+            'membership.application.verify',
+            'membership.application.review',
+            'membership.application.approve',
+            'membership.application.receive-payment',
+            'membership.application.confirm',
+        ] as $code) {
+            $this->assertSame(1, Permission::where('code', $code)->count());
+        }
     }
 }

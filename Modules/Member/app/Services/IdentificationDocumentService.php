@@ -36,9 +36,34 @@ class IdentificationDocumentService
             ->toMediaCollection(self::COLLECTION);
     }
 
+    public function saveFromPath(
+        UserIdentification $identification,
+        string $path,
+        string $side,
+        ?string $fileName = null,
+    ): Media {
+        $this->validateSide($side);
+
+        $this->removeExisting(
+            identification: $identification,
+            side: $side,
+        );
+
+        $adder = $identification
+            ->addMedia($path)
+            ->withCustomProperties([
+                'document_side' => $side,
+            ]);
+
+        if ($fileName !== null) {
+            $adder->usingFileName($fileName);
+        }
+
+        return $adder->toMediaCollection(self::COLLECTION);
+    }
+
     /**
      * @param array<string, UploadedFile> $documents
-     *
      * @return array<string, Media>
      */
     public function saveMany(

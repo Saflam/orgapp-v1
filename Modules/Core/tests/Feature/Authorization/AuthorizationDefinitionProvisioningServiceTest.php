@@ -61,6 +61,6 @@ class AuthorizationDefinitionProvisioningServiceTest extends TestCase
                 ->count()
         );
 
-        $this->assertDatabaseCount('permissions', 4);
+        $this->assertDatabaseCount('permissions', 11);
     }
 }

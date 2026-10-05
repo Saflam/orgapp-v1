@@ -37,11 +37,7 @@ class StoreMembershipApplicationRequest extends FormRequest
             }
         }
 
-        $identificationRules = $this->identificationRules(
-            $organization
-        );
-
-        foreach ($identificationRules as $field => $fieldRules) {
+        foreach ($this->identificationRules($organization) as $field => $fieldRules) {
             $rules[$field] = $fieldRules;
         }
 
@@ -68,28 +64,16 @@ class StoreMembershipApplicationRequest extends FormRequest
     }
 
     /**
-     * Build organization-specific identification validation rules.
-     *
-     * Only enabled identification types are accepted.
-     * Required identification types must be submitted.
-     *
-     * Document requirements are derived entirely from the
-     * organization's identification configuration.
-     *
      * @return array<string, array<int, mixed>>
      */
-    private function identificationRules(
-        Organization $organization,
-    ): array {
+    private function identificationRules(Organization $organization): array
+    {
         $configurations = app(
             OrganizationIdentificationService::class
         )->enabled($organization);
 
         $codes = $configurations
-            ->map(
-                fn ($configuration) =>
-                    $configuration->identificationType->code
-            )
+            ->map(fn ($configuration) => $configuration->identificationType->code)
             ->values()
             ->all();
 
@@ -109,14 +93,12 @@ class StoreMembershipApplicationRequest extends FormRequest
                     foreach (array_keys($value) as $code) {
                         if (! in_array($code, $codes, true)) {
                             $fail(
-                                "The identification type [{$code}] "
-                                . 'is not enabled for this organization.'
+                                "The identification type [{$code}] is not enabled for this organization."
                             );
                         }
                     }
                 },
             ],
-
             'identification_documents' => [
                 'sometimes',
                 'array',
@@ -130,8 +112,7 @@ class StoreMembershipApplicationRequest extends FormRequest
                     }
 
                     $configurationMap = $configurations->keyBy(
-                        fn ($configuration) =>
-                            $configuration->identificationType->code
+                        fn ($configuration) => $configuration->identificationType->code
                     );
 
                     foreach ($value as $code => $documents) {
@@ -139,22 +120,17 @@ class StoreMembershipApplicationRequest extends FormRequest
 
                         if ($configuration === null) {
                             $fail(
-                                "The identification type [{$code}] "
-                                . 'is not enabled for this organization.'
+                                "The identification type [{$code}] is not enabled for this organization."
                             );
-
                             continue;
                         }
 
-                        $requirements =
-                            $configuration->document_requirements ?? [];
+                        $requirements = $configuration->document_requirements ?? [];
 
                         if ($requirements === []) {
                             $fail(
-                                "Identification type [{$code}] "
-                                . 'does not accept identification documents.'
+                                "Identification type [{$code}] does not accept identification documents."
                             );
-
                             continue;
                         }
 
@@ -165,8 +141,7 @@ class StoreMembershipApplicationRequest extends FormRequest
                         foreach (array_keys($documents) as $side) {
                             if (! in_array($side, $requirements, true)) {
                                 $fail(
-                                    "The document side [{$side}] is not "
-                                    . "required for identification type [{$code}]."
+                                    "The document side [{$side}] is not required for identification type [{$code}]."
                                 );
                             }
                         }
@@ -178,30 +153,21 @@ class StoreMembershipApplicationRequest extends FormRequest
         foreach ($configurations as $configuration) {
             $code = $configuration->identificationType->code;
 
-            $rules[
-                "identifications.{$code}"
-            ] = [
-                $configuration->is_required
-                    ? 'required'
-                    : 'nullable',
+            $rules["identifications.{$code}"] = [
+                $configuration->is_required ? 'required' : 'nullable',
                 'string',
                 'max:255',
             ];
 
-            $documentRequirements =
-                $configuration->document_requirements ?? [];
+            $documentRequirements = $configuration->document_requirements ?? [];
 
-            $rules[
-                "identification_documents.{$code}"
-            ] = [
+            $rules["identification_documents.{$code}"] = [
                 'sometimes',
                 'array',
             ];
 
             foreach ($documentRequirements as $side) {
-                $rules[
-                    "identification_documents.{$code}.{$side}"
-                ] = [
+                $rules["identification_documents.{$code}.{$side}"] = [
                     'required',
                     'file',
                     'mimes:jpg,jpeg,png,pdf',
@@ -224,172 +190,130 @@ class StoreMembershipApplicationRequest extends FormRequest
                 'integer',
                 'exists:users,id',
             ],
-
             'membership_type_id' => [
                 'required',
                 'integer',
                 'exists:membership_types,id',
             ],
-
-            'starts_at' => [
-                'required',
-                'date',
-            ],
-
-            'membership_number' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-
             'first_name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'middle_name' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'last_name' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'date_of_birth' => [
                 'nullable',
                 'date',
             ],
-
             'gender' => [
                 'nullable',
                 'string',
                 'max:50',
             ],
-
+            'blood_group' => [
+                'required',
+                'string',
+                'max:20',
+            ],
             'whatsapp' => [
                 'nullable',
                 'string',
                 'max:50',
             ],
-
             'whatsapp_calling_code' => [
                 'nullable',
                 'string',
                 'max:10',
             ],
-
             'home_contact' => [
                 'nullable',
                 'string',
                 'max:50',
             ],
-
             'profession' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'company' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'unit_id' => [
                 'nullable',
                 'integer',
                 'exists:units,id',
             ],
-
-            'joined_at' => [
-                'nullable',
-                'date',
-            ],
-
-            'metadata' => [
-                'nullable',
-                'array',
-            ],
-
             'address' => [
                 'required',
                 'array',
             ],
-
             'address.address_type' => [
                 'required',
                 'string',
                 'max:50',
             ],
-
             'address.address_line_1' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'address.address_line_2' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'address.locality' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'address.city' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'address.state' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'address.postal_code' => [
                 'nullable',
                 'string',
                 'max:50',
             ],
-
             'address.country' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'address.is_primary' => [
                 'sometimes',
                 'boolean',
             ],
-
             'address.metadata' => [
                 'nullable',
                 'array',
             ],
-
             'extension_data' => [
                 'sometimes',
                 'array',
             ],
-
             'identifications' => [
                 'sometimes',
                 'array',
             ],
-
             'identification_documents' => [
                 'sometimes',
                 'array',

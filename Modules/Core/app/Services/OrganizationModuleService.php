@@ -8,6 +8,16 @@ use Modules\Core\Models\OrganizationModule;
 
 class OrganizationModuleService
 {
+    /**
+     * Modules that must always be enabled for every organization.
+     *
+     * @var array<int, string>
+     */
+    private const REQUIRED_MODULES = [
+        'Core',
+        'Member',
+    ];
+
     public function __construct(
         private ModuleRegistry $moduleRegistry,
         private ModuleDependencyRegistry $dependencyRegistry,
@@ -34,6 +44,7 @@ class OrganizationModuleService
         string $module,
     ): OrganizationModule {
         $this->ensureModuleIsAvailable($module);
+
         $this->ensureDependenciesAreEnabled(
             $organization,
             $module,
@@ -55,6 +66,7 @@ class OrganizationModuleService
         string $module,
     ): OrganizationModule {
         $this->ensureModuleIsAvailable($module);
+
         $this->ensureModuleCanBeDisabled(
             $organization,
             $module,
@@ -101,6 +113,23 @@ class OrganizationModuleService
             ->all();
     }
 
+    public function isRequired(string $module): bool
+    {
+        return in_array(
+            $module,
+            self::REQUIRED_MODULES,
+            true,
+        );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function requiredModules(): array
+    {
+        return self::REQUIRED_MODULES;
+    }
+
     private function ensureModuleIsAvailable(string $module): void
     {
         if (! $this->moduleRegistry->isAvailable($module)) {
@@ -143,6 +172,13 @@ class OrganizationModuleService
         Organization $organization,
         string $module,
     ): void {
+        if ($this->isRequired($module)) {
+            throw ValidationException::withMessages([
+                'module' =>
+                    "The module [{$module}] is required and cannot be disabled.",
+            ]);
+        }
+
         foreach (
             $this->moduleRegistry->enabledNames()
             as $dependentModule

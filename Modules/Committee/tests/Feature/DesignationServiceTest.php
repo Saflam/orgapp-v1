@@ -3,6 +3,7 @@
 namespace Modules\Committee\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Committee\Enums\DesignationScope;
 use Modules\Committee\Models\Designation;
 use Modules\Committee\Services\DesignationService;
 use Modules\Core\Models\Organization;
@@ -22,15 +23,39 @@ class DesignationServiceTest extends TestCase
             organizationId: $organization->id,
             name: 'Treasurer',
             code: 'TREASURER',
+            scope: DesignationScope::CENTRAL,
             description: 'Responsible for committee finances.',
         );
 
         $this->assertDatabaseHas('designations', [
             'id' => $designation->id,
+            'scope' => DesignationScope::CENTRAL->value,
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
             'is_active' => true,
+        ]);
+    }
+
+    public function test_it_creates_a_unit_scoped_designation(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $designation = app(DesignationService::class)->create(
+            organizationId: $organization->id,
+            name: 'Unit President',
+            code: 'UNIT_PRESIDENT',
+            scope: DesignationScope::UNIT,
+        );
+
+        $this->assertSame(
+            DesignationScope::UNIT,
+            $designation->scope,
+        );
+
+        $this->assertDatabaseHas('designations', [
+            'id' => $designation->id,
+            'scope' => DesignationScope::UNIT->value,
         ]);
     }
 

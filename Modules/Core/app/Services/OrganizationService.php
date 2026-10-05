@@ -8,10 +8,6 @@ use Modules\Core\Models\Organization;
 
 class OrganizationService
 {
-    private const DEFAULT_ENABLED_MODULES = [
-        'Member',
-    ];
-
     public function __construct(
         private readonly OrganizationModuleService $moduleService,
         private readonly ModuleRegistry $moduleRegistry,
@@ -63,7 +59,8 @@ class OrganizationService
     {
         if (User::query()->where('email', $email)->exists()) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'super_admin.email' => 'A user with this email address already exists.',
+                'super_admin.email' =>
+                    'A user with this email address already exists.',
             ]);
         }
     }
@@ -71,7 +68,7 @@ class OrganizationService
     private function initializeModules(Organization $organization): void
     {
         foreach ($this->moduleRegistry->enabledNames() as $module) {
-            if (in_array($module, self::DEFAULT_ENABLED_MODULES, true)) {
+            if ($this->moduleService->isRequired($module)) {
                 $this->moduleService->enable(
                     $organization,
                     $module,

@@ -20,16 +20,60 @@ Route::middleware([
     |--------------------------------------------------------------------------
     */
 
-    Route::get(
-        'membership-application',
-        [MembershipApplicationController::class, 'configuration']
-    )->name('membership-application.configuration');
+    Route::middleware('permission:membership.application.submit')->group(function () {
+        Route::get(
+            'membership-application',
+            [MembershipApplicationController::class, 'configuration']
+        )->name('membership-application.configuration');
 
-    Route::post(
-        'membership-application',
-        [MembershipApplicationController::class, 'store']
-    )->name('membership-application.store');
-    
+        Route::post(
+            'membership-application',
+            [MembershipApplicationController::class, 'store']
+        )->name('membership-application.store');
+    });
+
+    Route::middleware('permission:membership.application.view')->group(function () {
+        Route::get(
+            'membership-applications/{membershipApplication}',
+            [MembershipApplicationController::class, 'show']
+        )->name('membership-application.show');
+    });
+
+    Route::middleware('permission:membership.application.verify')->group(function () {
+        Route::post(
+            'membership-applications/{membershipApplication}/verify',
+            [MembershipApplicationController::class, 'verify']
+        )->name('membership-application.verify');
+    });
+
+    Route::middleware('permission:membership.application.review')->group(function () {
+        Route::post(
+            'membership-applications/{membershipApplication}/review',
+            [MembershipApplicationController::class, 'review']
+        )->name('membership-application.review');
+    });
+
+    Route::middleware('permission:membership.application.approve')->group(function () {
+        Route::post(
+            'membership-applications/{membershipApplication}/approve',
+            [MembershipApplicationController::class, 'approve']
+        )->name('membership-application.approve');
+    });
+
+    Route::middleware('permission:membership.application.receive-payment')->group(function () {
+        Route::post(
+            'membership-applications/{membershipApplication}/payment',
+            [MembershipApplicationController::class, 'receivePayment']
+        )->name('membership-application.payment');
+    });
+
+    Route::middleware('permission:membership.application.confirm')->group(function () {
+        Route::post(
+            'membership-applications/{membershipApplication}/confirm',
+            [MembershipApplicationController::class, 'confirm']
+        )->name('membership-application.confirm');
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Member Profile Routes

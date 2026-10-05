@@ -4,6 +4,7 @@ namespace Modules\Committee\Providers;
 
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Core\Services\AuthorizationContributorRegistry;
 
 class CommitteeServiceProvider extends ModuleServiceProvider
 {
@@ -33,6 +34,20 @@ class CommitteeServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        $this->app->afterResolving(
+            AuthorizationContributorRegistry::class,
+            function (AuthorizationContributorRegistry $registry): void {
+                $registry->register(
+                    new \Modules\Committee\Services\CommitteeAuthorizationContributor()
+                );
+            }
+        );
+    }
 
     /**
      * Define module schedules.

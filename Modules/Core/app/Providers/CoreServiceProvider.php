@@ -54,6 +54,11 @@ class CoreServiceProvider extends ModuleServiceProvider
             },
         );
 
+        $this->app->singleton(
+            \Modules\Core\Services\AuthorizationContributorRegistry::class,
+            fn () => new \Modules\Core\Services\AuthorizationContributorRegistry(),
+        );
+
         $this->app->afterResolving(
             RoleRegistry::class,
             function (RoleRegistry $registry): void {

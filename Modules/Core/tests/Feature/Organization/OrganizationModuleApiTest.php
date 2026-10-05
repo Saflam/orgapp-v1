@@ -42,18 +42,13 @@ class OrganizationModuleApiTest extends TestCase
             ]);
     }
 
-    public function test_system_admin_can_enable_a_module(): void
+    public function test_system_admin_can_enable_a_required_module(): void
     {
         $organization = Organization::factory()->create();
 
         $systemAdmin = User::factory()->create([
             'is_system_admin' => true,
         ]);
-
-        app(OrganizationModuleService::class)->disable(
-            $organization,
-            'Member',
-        );
 
         $token = app(AuthenticationService::class)
             ->createApiToken($systemAdmin);
@@ -83,7 +78,7 @@ class OrganizationModuleApiTest extends TestCase
         );
     }
 
-    public function test_system_admin_can_disable_a_module(): void
+    public function test_system_admin_cannot_disable_member_module(): void
     {
         $organization = Organization::factory()->create();
 
@@ -106,21 +101,69 @@ class OrganizationModuleApiTest extends TestCase
             );
 
         $response
-            ->assertOk()
-            ->assertJson([
-                'message' =>
-                    'Organization module disabled successfully.',
-                'module' => [
-                    'module' => 'Member',
-                    'is_enabled' => false,
-                ],
+            ->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'module',
             ]);
 
-        $this->assertFalse(
+        $this->assertTrue(
             app(OrganizationModuleService::class)->isEnabled(
                 $organization,
                 'Member',
             )
+        );
+    }
+
+    public function test_system_admin_cannot_disable_core_module(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $systemAdmin = User::factory()->create([
+            'is_system_admin' => true,
+        ]);
+
+        app(OrganizationModuleService::class)->enable(
+            $organization,
+            'Core',
+        );
+
+        $token = app(AuthenticationService::class)
+            ->createApiToken($systemAdmin);
+
+        $response = $this
+            ->withToken($token)
+            ->postJson(
+                "/api/v1/system/organizations/{$organization->id}/modules/Core/disable"
+            );
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'module',
+            ]);
+
+        $this->assertTrue(
+            app(OrganizationModuleService::class)->isEnabled(
+                $organization,
+                'Core',
+            )
+        );
+    }
+
+    public function test_required_modules_are_identified_correctly(): void
+    {
+        $service = app(OrganizationModuleService::class);
+
+        $this->assertTrue(
+            $service->isRequired('Core')
+        );
+
+        $this->assertTrue(
+            $service->isRequired('Member')
+        );
+
+        $this->assertFalse(
+            $service->isRequired('Saradhi')
         );
     }
 

@@ -8,6 +8,7 @@ use Modules\Core\Models\Organization;
 use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
 use Modules\Core\Services\RoleRegistrationService;
+use Modules\Member\Providers\MemberPermissionProvider;
 use Modules\Member\Providers\MemberRoleProvider;
 use Tests\TestCase;
 
@@ -205,28 +206,8 @@ class RoleRegistrationServiceTest extends TestCase
 
     private function registerMemberPermissions(): void
     {
-        Permission::create([
-            'module' => 'member',
-            'name' => 'View Members',
-            'code' => 'members.view',
-        ]);
-
-        Permission::create([
-            'module' => 'member',
-            'name' => 'Update Members',
-            'code' => 'members.update',
-        ]);
-
-        Permission::create([
-            'module' => 'member',
-            'name' => 'View Own Profile',
-            'code' => 'members.profile.view',
-        ]);
-
-        Permission::create([
-            'module' => 'member',
-            'name' => 'Update Own Profile',
-            'code' => 'members.profile.update',
-        ]);
+        foreach ((new MemberPermissionProvider())->permissions() as $permission) {
+            Permission::create($permission);
+        }
     }
 }

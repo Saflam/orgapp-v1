@@ -4,6 +4,7 @@ namespace Modules\Committee\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Modules\Committee\Enums\DesignationScope;
 use Modules\Committee\Http\Requests\CreateDesignationRequest;
 use Modules\Committee\Http\Requests\UpdateDesignationRequest;
 use Modules\Committee\Models\Designation;
@@ -67,6 +68,7 @@ class DesignationController extends Controller
             organizationId: $organization->id,
             name: $request->string('name')->toString(),
             code: $request->string('code')->toString(),
+            scope: DesignationScope::from($request->string('scope')->toString()),
             description: $request->input('description'),
         );
 
@@ -96,6 +98,7 @@ class DesignationController extends Controller
         $designation = $designationService->update(
             designation: $designation,
             name: $request->string('name')->toString(),
+            scope: DesignationScope::from($request->string('scope')->toString()),
             description: $request->input('description'),
         );
 

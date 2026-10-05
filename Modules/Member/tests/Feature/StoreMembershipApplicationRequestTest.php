@@ -64,8 +64,7 @@ class StoreMembershipApplicationRequestTest extends TestCase
         return [
             'user_id' => $user->id,
             'membership_type_id' => $membershipType->id,
-            'starts_at' => '2026-09-23',
-            'membership_number' => 'M-0010',
+            'blood_group' => 'O+',
             'first_name' => 'Test',
             'address' => [
                 'address_type' => 'home',
@@ -84,8 +83,9 @@ class StoreMembershipApplicationRequestTest extends TestCase
 
         $this->assertArrayHasKey('user_id', $rules);
         $this->assertArrayHasKey('membership_type_id', $rules);
-        $this->assertArrayHasKey('starts_at', $rules);
-        $this->assertArrayHasKey('membership_number', $rules);
+        $this->assertArrayHasKey('blood_group', $rules);
+        $this->assertArrayNotHasKey('starts_at', $rules);
+        $this->assertArrayNotHasKey('membership_number', $rules);
         $this->assertArrayHasKey('extension_data', $rules);
         $this->assertArrayHasKey('identifications', $rules);
     }
@@ -178,8 +178,7 @@ class StoreMembershipApplicationRequestTest extends TestCase
             [
                 'user_id' => 1,
                 'membership_type_id' => 1,
-                'starts_at' => '2026-09-23',
-                'membership_number' => 'M-0010',
+                'blood_group' => 'O+',
                 'address' => [
                     'address_type' => 'home',
                     'address_line_1' => '123 Main Street',
@@ -313,8 +312,7 @@ class StoreMembershipApplicationRequestTest extends TestCase
             [
                 'user_id' => $user->id,
                 'membership_type_id' => 1,
-                'starts_at' => '2026-09-23',
-                'membership_number' => 'M-0010',
+                'blood_group' => 'O+',
             ],
             $request->rules()
         );

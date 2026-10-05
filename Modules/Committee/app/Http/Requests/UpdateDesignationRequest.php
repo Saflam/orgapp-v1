@@ -3,6 +3,7 @@
 namespace Modules\Committee\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Committee\Enums\DesignationScope;
 
 class UpdateDesignationRequest extends FormRequest
 {
@@ -16,6 +17,7 @@ class UpdateDesignationRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'scope' => ['required', 'string', 'in:' . implode(',', array_map(fn ($scope) => $scope->value, DesignationScope::cases()))],
         ];
     }
 }

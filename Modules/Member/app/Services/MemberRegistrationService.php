@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Organization;
 use Modules\Member\Enums\MembershipStatus;
 use Modules\Member\Models\Member;
+use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Models\Membership;
 use Modules\Member\Models\MembershipType;
 use Throwable;
@@ -19,6 +20,7 @@ class MemberRegistrationService
         private MembershipApplicationExtensionRegistry $extensionRegistry,
         private UserIdentificationService $userIdentificationService,
         private IdentificationDocumentService $identificationDocumentService,
+        private MembershipApplicationDocumentService $applicationDocumentService,
     ) {
     }
 
@@ -154,5 +156,65 @@ class MemberRegistrationService
                 throw $exception;
             }
         });
+    }
+
+
+    public function finalizeApplicationIdentifications(
+        MembershipApplication $application,
+        Member $member,
+    ): void {
+        $identifications = $application->data['identifications'] ?? [];
+        $createdMedia = [];
+
+        try {
+            foreach ($identifications as $identification) {
+                $identificationTypeId = (int) ($identification['identification_type_id'] ?? 0);
+                $identificationNumber = $identification['identification_number'] ?? null;
+
+                if ($identificationTypeId === 0 || $identificationNumber === null) {
+                    continue;
+                }
+
+                $identificationType = \Modules\Core\Models\IdentificationType::query()
+                    ->findOrFail($identificationTypeId);
+
+                $userIdentification = $this->userIdentificationService->save(
+                    user: $member->user,
+                    identificationType: $identificationType,
+                    data: [
+                        'identification_number' => $identificationNumber,
+                        'metadata' => null,
+                    ],
+                );
+
+                foreach (
+                    $this->applicationDocumentService->forIdentification(
+                        application: $application,
+                        identificationTypeId: $identificationTypeId,
+                    ) as $media
+                ) {
+                    $side = (string) $media->getCustomProperty('document_side');
+
+                    $createdMedia[] = $this->identificationDocumentService->saveFromPath(
+                        identification: $userIdentification,
+                        path: $media->getPath(),
+                        side: $side,
+                        fileName: $media->file_name,
+                    );
+
+                    $media->delete();
+                }
+            }
+        } catch (\Throwable $exception) {
+            foreach ($createdMedia as $media) {
+                try {
+                    $media->delete();
+                } catch (\Throwable) {
+                    // Preserve the original exception.
+                }
+            }
+
+            throw $exception;
+        }
     }
 }

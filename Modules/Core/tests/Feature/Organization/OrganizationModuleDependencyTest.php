@@ -118,7 +118,7 @@ class OrganizationModuleDependencyTest extends TestCase
         ]);
     }
 
-    public function test_member_can_be_disabled_when_saradhi_is_disabled(): void
+    public function test_member_cannot_be_disabled_when_saradhi_is_disabled(): void
     {
         $organization = Organization::factory()->create();
 
@@ -129,22 +129,17 @@ class OrganizationModuleDependencyTest extends TestCase
             'Member'
         );
 
+        $this->expectException(ValidationException::class);
+
         $service->disable(
             $organization,
             'Member'
         );
 
-        $this->assertFalse(
-            $service->isEnabled(
-                $organization,
-                'Member'
-            )
-        );
-
         $this->assertDatabaseHas('organization_modules', [
             'organization_id' => $organization->id,
             'module' => 'Member',
-            'is_enabled' => false,
+            'is_enabled' => true,
         ]);
     }
 

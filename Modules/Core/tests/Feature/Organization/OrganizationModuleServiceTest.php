@@ -3,6 +3,7 @@
 namespace Modules\Core\Tests\Feature\Organization;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\OrganizationModuleService;
 use Tests\TestCase;
@@ -44,7 +45,7 @@ class OrganizationModuleServiceTest extends TestCase
         );
     }
 
-    public function test_it_can_disable_a_module(): void
+    public function test_it_can_disable_an_optional_module(): void
     {
         $organization = Organization::factory()->create();
 
@@ -55,12 +56,43 @@ class OrganizationModuleServiceTest extends TestCase
             'Member',
         );
 
+        $service->enable(
+            $organization,
+            'Saradhi',
+        );
+
         $service->disable(
+            $organization,
+            'Saradhi',
+        );
+
+        $this->assertFalse(
+            $service->isEnabled(
+                $organization,
+                'Saradhi'
+            )
+        );
+    }
+
+    public function test_it_cannot_disable_a_required_module(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $service = app(OrganizationModuleService::class);
+
+        $service->enable(
             $organization,
             'Member',
         );
 
-        $this->assertFalse(
+        $this->expectException(ValidationException::class);
+
+        $service->disable(
+            $organization,
+            'Member'
+        );
+
+        $this->assertTrue(
             $service->isEnabled(
                 $organization,
                 'Member'

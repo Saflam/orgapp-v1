@@ -25,6 +25,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'description' => 'Handles finances.',
             'is_active' => true,
         ]);
@@ -33,6 +34,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Secretary',
             'code' => 'SECRETARY',
+            'scope' => 'central',
             'description' => 'Handles records.',
             'is_active' => true,
         ]);
@@ -69,6 +71,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organizationB->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -94,6 +97,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'description' => 'Handles finances.',
             'is_active' => true,
         ]);
@@ -131,6 +135,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organizationB->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -160,6 +165,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -184,6 +190,7 @@ class DesignationApiTest extends TestCase
             [
                 'name' => 'Treasurer',
                 'code' => 'TREASURER',
+                'scope' => 'central',
                 'description' => 'Handles finances.',
             ]
         );
@@ -199,6 +206,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'description' => 'Handles finances.',
             'is_active' => true,
         ]);
@@ -223,6 +231,7 @@ class DesignationApiTest extends TestCase
             ->assertJsonValidationErrors([
                 'name',
                 'code',
+                'scope',
             ]);
     }
 
@@ -239,6 +248,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -247,6 +257,7 @@ class DesignationApiTest extends TestCase
             [
                 'name' => 'Finance Officer',
                 'code' => 'TREASURER',
+                'scope' => 'central',
             ]
         );
 
@@ -274,6 +285,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organizationA->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -282,6 +294,7 @@ class DesignationApiTest extends TestCase
             [
                 'name' => 'Treasurer',
                 'code' => 'TREASURER',
+                'scope' => 'central',
             ]
         );
 
@@ -301,6 +314,7 @@ class DesignationApiTest extends TestCase
             [
                 'name' => 'Treasurer',
                 'code' => 'TREASURER',
+                'scope' => 'central',
             ]
         );
 
@@ -322,6 +336,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'description' => 'Old description.',
             'is_active' => true,
         ]);
@@ -330,6 +345,7 @@ class DesignationApiTest extends TestCase
             "/api/v1/organizations/{$organization->id}/designations/{$designation->id}",
             [
                 'name' => 'Chief Treasurer',
+                'scope' => 'central',
                 'description' => 'Updated description.',
             ]
         );
@@ -345,7 +361,9 @@ class DesignationApiTest extends TestCase
         $this->assertDatabaseHas('designations', [
             'id' => $designation->id,
             'name' => 'Chief Treasurer',
+                'scope' => 'central',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'description' => 'Updated description.',
         ]);
     }
@@ -363,6 +381,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -373,7 +392,7 @@ class DesignationApiTest extends TestCase
 
         $response
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['name']);
+            ->assertJsonValidationErrors(['name', 'scope']);
     }
 
     public function test_it_cannot_update_a_designation_from_another_organization(): void
@@ -397,6 +416,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organizationB->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -404,6 +424,7 @@ class DesignationApiTest extends TestCase
             "/api/v1/organizations/{$organizationA->id}/designations/{$designation->id}",
             [
                 'name' => 'Chief Treasurer',
+                'scope' => 'central',
             ]
         );
 
@@ -423,6 +444,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -430,6 +452,7 @@ class DesignationApiTest extends TestCase
             "/api/v1/organizations/{$organization->id}/designations/{$designation->id}",
             [
                 'name' => 'Chief Treasurer',
+                'scope' => 'central',
             ]
         );
 
@@ -454,6 +477,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => false,
         ]);
 
@@ -485,6 +509,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => true,
         ]);
 
@@ -524,6 +549,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organizationB->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => false,
         ]);
 
@@ -547,6 +573,7 @@ class DesignationApiTest extends TestCase
             'organization_id' => $organization->id,
             'name' => 'Treasurer',
             'code' => 'TREASURER',
+            'scope' => 'central',
             'is_active' => false,
         ]);
 

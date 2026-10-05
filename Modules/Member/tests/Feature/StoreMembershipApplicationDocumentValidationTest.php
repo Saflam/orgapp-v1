@@ -64,8 +64,7 @@ class StoreMembershipApplicationDocumentValidationTest extends TestCase
         return [
             'user_id' => $user->id,
             'membership_type_id' => $membershipType->id,
-            'starts_at' => '2026-09-23',
-            'membership_number' => 'M-0010',
+            'blood_group' => 'O+',
             'first_name' => 'Test',
             'address' => [
                 'address_type' => 'home',

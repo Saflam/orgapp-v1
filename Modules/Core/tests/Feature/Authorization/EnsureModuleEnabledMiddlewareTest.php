@@ -27,8 +27,8 @@ class EnsureModuleEnabledMiddlewareTest extends TestCase
             'auth',
             'organization',
             'organization.access',
-            'module:Member',
-        ])->get('/__test/member-module', function () {
+            'module:Saradhi',
+        ])->get('/__test/saradhi-module', function () {
             return response()->json([
                 'message' => 'allowed',
             ]);
@@ -62,9 +62,16 @@ class EnsureModuleEnabledMiddlewareTest extends TestCase
             'status' => 'active',
         ]);
 
-        app(OrganizationModuleService::class)->enable(
+        $service = app(OrganizationModuleService::class);
+
+        $service->enable(
             $organization,
             'Member',
+        );
+
+        $service->enable(
+            $organization,
+            'Saradhi',
         );
 
         $response = $this
@@ -94,9 +101,21 @@ class EnsureModuleEnabledMiddlewareTest extends TestCase
             'status' => 'active',
         ]);
 
-        app(OrganizationModuleService::class)->disable(
+        $service = app(OrganizationModuleService::class);
+
+        $service->enable(
             $organization,
             'Member',
+        );
+
+        $service->enable(
+            $organization,
+            'Saradhi',
+        );
+
+        $service->disable(
+            $organization,
+            'Saradhi',
         );
 
         $response = $this
@@ -109,7 +128,7 @@ class EnsureModuleEnabledMiddlewareTest extends TestCase
             ->assertForbidden()
             ->assertJson([
                 'message' =>
-                    'The [Member] module is not enabled for this organization.',
+                    'The [Saradhi] module is not enabled for this organization.',
             ]);
     }
 
@@ -119,6 +138,6 @@ class EnsureModuleEnabledMiddlewareTest extends TestCase
         return 'http://'
             . $organization->slug
             . '.example.test'
-            . '/__test/member-module';
+            . '/__test/saradhi-module';
     }
 }

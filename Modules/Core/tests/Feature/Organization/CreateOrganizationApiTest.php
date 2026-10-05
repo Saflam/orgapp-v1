@@ -5,9 +5,9 @@ namespace Modules\Core\Tests\Feature\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Core\Services\AuthorizationDefinitionProvisioningService;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Role;
+use Modules\Core\Services\AuthorizationDefinitionProvisioningService;
 use Tests\TestCase;
 
 class CreateOrganizationApiTest extends TestCase
@@ -187,7 +187,7 @@ class CreateOrganizationApiTest extends TestCase
         $this->assertDatabaseCount('members', 0);
     }
 
-    public function test_member_module_is_enabled_by_default(): void
+    public function test_required_modules_are_enabled_when_an_organization_is_created(): void
     {
         $systemAdmin = User::factory()->create([
             'is_system_admin' => true,
@@ -215,6 +215,12 @@ class CreateOrganizationApiTest extends TestCase
 
         $this->assertDatabaseHas('organization_modules', [
             'organization_id' => $organization->id,
+            'module' => 'Core',
+            'is_enabled' => true,
+        ]);
+
+        $this->assertDatabaseHas('organization_modules', [
+            'organization_id' => $organization->id,
             'module' => 'Member',
             'is_enabled' => true,
         ]);
@@ -226,7 +232,10 @@ class CreateOrganizationApiTest extends TestCase
             'is_system_admin' => true,
         ]);
 
-        $response = $this->actingAs($systemAdmin, 'sanctum')
+        $response = $this
+            ->withToken(
+                $systemAdmin->createToken('test-token')->plainTextToken
+            )
             ->postJson('/api/v1/system/organizations', [
                 'organization' => [
                     'name' => 'Kerala Cultural Association',
@@ -244,7 +253,7 @@ class CreateOrganizationApiTest extends TestCase
             ->where('code', 'KCA')
             ->firstOrFail();
 
-        foreach (['Core', 'Committee', 'Finance'] as $module) {
+        foreach (['Committee', 'Finance'] as $module) {
             $this->assertDatabaseHas('organization_modules', [
                 'organization_id' => $organization->id,
                 'module' => $module,

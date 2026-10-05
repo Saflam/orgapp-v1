@@ -14,6 +14,7 @@ class DesignationResource extends JsonResource
             'organization_id' => $this->organization_id,
             'name' => $this->name,
             'code' => $this->code,
+            'scope' => $this->scope?->value,
             'description' => $this->description,
             'is_active' => $this->is_active,
             'permissions' => $this->whenLoaded(

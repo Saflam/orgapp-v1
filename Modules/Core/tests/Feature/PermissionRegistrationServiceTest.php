@@ -41,6 +41,6 @@ class PermissionRegistrationServiceTest extends TestCase
         $service->register($provider);
         $service->register($provider);
 
-        $this->assertDatabaseCount('permissions', 4);
+        $this->assertDatabaseCount('permissions', 11);
     }
 }
