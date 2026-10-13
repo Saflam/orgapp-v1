@@ -3,6 +3,7 @@
 namespace Modules\Core\Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Modules\Core\Services\AuthorizationDefinitionProvisioningService;
 
 class CoreDatabaseSeeder extends Seeder
 {
@@ -11,6 +12,6 @@ class CoreDatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        //$this->call([]);
+        app(AuthorizationDefinitionProvisioningService::class)->provision();
     }
 }

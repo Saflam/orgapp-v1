@@ -1,5 +1,6 @@
 $kind: http-request
-description: Matches the auth:sanctum route GET /api/v1/auth/me. Requires the token from step 2.
+description: Matches the auth:sanctum route GET /api/v1/auth/me. Requires the
+  token from step 2.
 url: "{{baseUrl}}/api/v1/auth/me"
 method: GET
 headers:
@@ -15,4 +16,4 @@ scripts:
         pm.expect(body.user).to.have.property('email');
       });
     language: text/javascript
-order: 3000
+order: 2000

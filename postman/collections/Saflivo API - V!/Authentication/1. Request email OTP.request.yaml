@@ -6,11 +6,13 @@ headers:
   Accept: application/json
   Content-Type: application/json
 body:
-  type: json
-  content: |-
-    {
-      "email": "{{email}}"
-    }
+  type: formdata
+  content:
+    - type: text
+      key: email
+      value: safeeraslamc@gmail.com
+      description: ""
+      disabled: false
 scripts:
   - type: afterResponse
     code: |-

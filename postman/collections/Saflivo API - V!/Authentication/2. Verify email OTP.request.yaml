@@ -1,5 +1,7 @@
 $kind: http-request
-description: Matches POST /api/v1/login/otp/verify. The controller expects integer challenge_id and a six-digit code. On success, returns token and token_type.
+description: Matches POST /api/v1/login/otp/verify. The controller expects
+  integer challenge_id and a six-digit code. On success, returns token and
+  token_type.
 url: "{{baseUrl}}/api/v1/login/otp/verify"
 method: POST
 headers:
@@ -25,4 +27,4 @@ scripts:
         });
       }
     language: text/javascript
-order: 2000
+order: 1403
