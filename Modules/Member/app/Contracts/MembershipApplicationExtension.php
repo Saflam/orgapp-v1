@@ -30,6 +30,17 @@ interface MembershipApplicationExtension
     public function rules(): array;
 
     /**
+     * Validate organization-aware extension data before application submission.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, array<int, mixed>>
+     */
+    public function validate(
+        Organization $organization,
+        array $data,
+    ): array;
+
+    /**
      * Persist extension-specific application data.
      *
      * @param array<string, mixed> $data

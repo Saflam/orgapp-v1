@@ -162,6 +162,45 @@ class CreateOrganizationApiTest extends TestCase
         ]);
     }
 
+    public function test_system_admin_can_grant_system_default_notification_access_during_creation(): void
+    {
+        $systemAdmin = User::factory()->create([
+            'is_system_admin' => true,
+        ]);
+
+        $this
+            ->withToken($systemAdmin->createToken('test-token')->plainTextToken)
+            ->postJson('/api/v1/system/organizations', [
+                'organization' => [
+                    'name' => 'Kerala Cultural Association',
+                    'code' => 'KCA',
+                ],
+                'super_admin' => [
+                    'name' => 'John Doe',
+                    'email' => 'john@example.com',
+                ],
+                'notification_channels' => [
+                    'whatsapp' => ['use_system_default' => true],
+                    'sms' => ['use_system_default' => false],
+                ],
+            ])
+            ->assertCreated();
+
+        $organization = Organization::query()->where('code', 'KCA')->firstOrFail();
+
+        $this->assertDatabaseHas('organization_notification_channels', [
+            'organization_id' => $organization->id,
+            'channel' => 'whatsapp',
+            'use_system_default' => true,
+        ]);
+
+        $this->assertDatabaseHas('organization_notification_channels', [
+            'organization_id' => $organization->id,
+            'channel' => 'sms',
+            'use_system_default' => false,
+        ]);
+    }
+
     public function test_creating_an_organization_does_not_create_a_member_record(): void
     {
         $systemAdmin = User::factory()->create([

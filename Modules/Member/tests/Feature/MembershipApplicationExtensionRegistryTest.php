@@ -175,6 +175,13 @@ class FakeMembershipApplicationExtension
         ];
     }
 
+    public function validate(
+        Organization $organization,
+        array $data,
+    ): array {
+        return [];
+    }
+
     public function persist(
         Organization $organization,
         Member $member,

@@ -37,6 +37,7 @@ class OrganizationModuleApiTest extends TestCase
                     '*' => [
                         'module',
                         'is_enabled',
+                        'is_required',
                     ],
                 ],
             ]);
@@ -67,6 +68,7 @@ class OrganizationModuleApiTest extends TestCase
                 'module' => [
                     'module' => 'Member',
                     'is_enabled' => true,
+                    'is_required' => true,
                 ],
             ]);
 

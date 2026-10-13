@@ -183,6 +183,7 @@ class MemberRegistrationService
                     identificationType: $identificationType,
                     data: [
                         'identification_number' => $identificationNumber,
+                        'expires_at' => $identification['expires_at'] ?? null,
                         'metadata' => null,
                     ],
                 );

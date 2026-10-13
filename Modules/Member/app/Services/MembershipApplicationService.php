@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Organization;
 use Modules\Member\Enums\MembershipApplicationStatus;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationSubmitted;
 use Modules\Member\Models\Member;
 use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Models\MembershipType;
@@ -24,73 +25,105 @@ class MembershipApplicationService
         int $userId,
         int $membershipTypeId,
     ): MembershipApplication {
-        $membershipType = $this->membershipType(
-            organization: $organization,
-            membershipTypeId: $membershipTypeId,
-        );
+        /*
+         * Lock the active organization membership first. This serializes
+         * application start/resume requests for the same user and organization,
+         * including the case where no application row exists yet.
+         */
+        [$application, $clearDocuments] = DB::transaction(function () use (
+            $organization,
+            $userId,
+            $membershipTypeId,
+        ): array {
+            $organizationMembership = OrganizationMembership::query()
+                ->where('organization_id', $organization->id)
+                ->where('user_id', $userId)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->first();
 
-        $this->ensureUserBelongsToOrganization(
-            organization: $organization,
-            userId: $userId,
-        );
+            if (! $organizationMembership) {
+                throw ValidationException::withMessages([
+                    'user_id' => 'The selected user does not have an active membership in the selected organization.',
+                ]);
+            }
 
-        $this->ensureUserIsNotAlreadyMember(
-            organization: $organization,
-            userId: $userId,
-        );
+            $membershipType = $this->membershipType(
+                organization: $organization,
+                membershipTypeId: $membershipTypeId,
+            );
 
-        $application = MembershipApplication::query()
-            ->where('organization_id', $organization->id)
-            ->where('user_id', $userId)
-            ->latest('id')
-            ->first();
+            $this->ensureUserIsNotAlreadyMember(
+                organization: $organization,
+                userId: $userId,
+            );
 
-        if ($application?->status === MembershipApplicationStatus::DRAFT) {
-            return $application;
-        }
+            $application = MembershipApplication::query()
+                ->where('organization_id', $organization->id)
+                ->where('user_id', $userId)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
 
-        if (
-            $application?->status === MembershipApplicationStatus::REJECTED
-            && $application->latestRejectionAllowsReapply()
-        ) {
+            if ($application?->status === MembershipApplicationStatus::DRAFT) {
+                return [$application, false];
+            }
+
+            if (
+                $application?->status === MembershipApplicationStatus::REJECTED
+                && $application->latestRejectionAllowsReapply()
+            ) {
+                $application->update([
+                    'status' => MembershipApplicationStatus::DRAFT,
+                    'membership_type_id' => $membershipType->id,
+                    'current_step' => 1,
+                    'completed_steps' => [],
+                    'data' => [],
+                    'submitted_at' => null,
+                ]);
+
+                $application->statusHistories()->create([
+                    'from_status' => MembershipApplicationStatus::REJECTED->value,
+                    'to_status' => MembershipApplicationStatus::DRAFT->value,
+                    'actor_user_id' => auth()->id(),
+                    'notes' => 'Application reopened for revision and re-application.',
+                    'allow_reapply' => false,
+                    'metadata' => [],
+                ]);
+
+                return [$application->refresh(), true];
+            }
+
+            if ($application !== null) {
+                throw ValidationException::withMessages([
+                    'application' => 'An active membership application already exists for this user in this organization.',
+                ]);
+            }
+
+            return [
+                MembershipApplication::create([
+                    'organization_id' => $organization->id,
+                    'user_id' => $userId,
+                    'membership_type_id' => $membershipType->id,
+                    'status' => MembershipApplicationStatus::DRAFT,
+                    'current_step' => 1,
+                    'completed_steps' => [],
+                    'data' => [],
+                ]),
+                false,
+            ];
+        });
+
+        /*
+         * Media-library file deletion is an external side effect and cannot be
+         * reliably rolled back with the database transaction. Clear the prior
+         * submission's files only after the draft reset commits successfully.
+         */
+        if ($clearDocuments) {
             $application->clearMediaCollection('application-documents');
-
-            $application->update([
-                'status' => MembershipApplicationStatus::DRAFT,
-                'membership_type_id' => $membershipType->id,
-                'current_step' => 1,
-                'completed_steps' => [],
-                'data' => [],
-                'submitted_at' => null,
-            ]);
-
-            $application->statusHistories()->create([
-                'from_status' => MembershipApplicationStatus::REJECTED->value,
-                'to_status' => MembershipApplicationStatus::DRAFT->value,
-                'actor_user_id' => auth()->id(),
-                'notes' => 'Application reopened for revision and re-application.',
-                'allow_reapply' => false,
-                'metadata' => [],
-            ]);
-
-            return $application->refresh();
         }
 
-        if ($application !== null) {
-            throw ValidationException::withMessages([
-                'application' => 'An active membership application already exists for this user in this organization.',
-            ]);
-        }
-
-        return MembershipApplication::create([
-            'organization_id' => $organization->id,
-            'user_id' => $userId,
-            'membership_type_id' => $membershipType->id,
-            'status' => MembershipApplicationStatus::DRAFT,
-            'current_step' => 1,
-            'completed_steps' => [],
-            'data' => [],
-        ]);
+        return $application->refresh();
     }
 
     /**
@@ -175,10 +208,16 @@ class MembershipApplicationService
                 'metadata' => [],
             ]);
 
-            return $application->refresh()->load([
+            $application = $application->refresh()->load([
                 'membershipType',
                 'statusHistories.actor',
             ]);
+
+            DB::afterCommit(function () use ($application): void {
+                event(new MembershipApplicationSubmitted($application));
+            });
+
+            return $application;
         });
     }
 

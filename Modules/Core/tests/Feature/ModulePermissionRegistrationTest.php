@@ -4,6 +4,7 @@ namespace Modules\Core\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Services\PermissionRegistry;
+use Modules\Core\Services\PermissionRegistrationService;
 use Tests\TestCase;
 
 class ModulePermissionRegistrationTest extends TestCase
@@ -16,11 +17,26 @@ class ModulePermissionRegistrationTest extends TestCase
 
         $providers = $registry->providers();
 
-        $this->assertCount(1, $providers);
+        $this->assertCount(4, $providers);
+
+        $this->assertSame(
+            'Modules\\Core\\Providers\\CorePermissionProvider',
+            $providers[0]::class
+        );
 
         $this->assertSame(
             'Modules\\Member\\Providers\\MemberPermissionProvider',
-            $providers[0]::class
+            $providers[1]::class
+        );
+
+        $this->assertSame(
+            'Modules\\Events\\Providers\\EventsPermissionProvider',
+            $providers[2]::class
+        );
+
+        $this->assertSame(
+            'Modules\\Finance\\Providers\\FinancePermissionProvider',
+            $providers[3]::class
         );
     }
 
@@ -28,9 +44,7 @@ class ModulePermissionRegistrationTest extends TestCase
     {
         $registry = app(PermissionRegistry::class);
 
-        $registrationService = app(
-            \Modules\Core\Services\PermissionRegistrationService::class
-        );
+        $registrationService = app(PermissionRegistrationService::class);
 
         $registry->registerPermissions($registrationService);
 

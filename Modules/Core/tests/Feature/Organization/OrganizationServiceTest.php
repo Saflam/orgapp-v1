@@ -5,6 +5,7 @@ namespace Modules\Core\Tests\Feature\Organization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\AuthorizationDefinitionProvisioningService;
+use Modules\Core\Services\ModuleRegistry;
 use Modules\Core\Services\OrganizationModuleService;
 use Modules\Core\Services\OrganizationService;
 use Tests\TestCase;
@@ -240,6 +241,50 @@ class OrganizationServiceTest extends TestCase
 
         $this->assertDatabaseMissing('organizations', [
             'code' => 'TEST',
+        ]);
+    }
+
+    public function test_organization_creation_rolls_back_when_a_required_module_is_unavailable(): void
+    {
+        $moduleRegistry = \Mockery::mock(ModuleRegistry::class);
+        $moduleRegistry->shouldReceive('isAvailable')
+            ->with('Core')
+            ->andReturn(true);
+        $moduleRegistry->shouldReceive('isAvailable')
+            ->with('Member')
+            ->andReturn(false);
+
+        $this->app->instance(ModuleRegistry::class, $moduleRegistry);
+
+        try {
+            app(OrganizationService::class)->create([
+                'organization' => [
+                    'name' => 'Rollback Organization',
+                    'code' => 'ROLLBACK',
+                    'slug' => 'rollback-organization',
+                ],
+                'super_admin' => [
+                    'name' => 'Rollback Admin',
+                    'email' => 'rollback-admin@example.com',
+                ],
+            ]);
+
+            $this->fail('Organization creation should fail when a required module is unavailable.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertSame(
+                'The module [Member] is not available.',
+                $exception->errors()['module'][0] ?? null,
+            );
+        }
+
+        $this->assertDatabaseMissing('organizations', [
+            'code' => 'ROLLBACK',
+        ]);
+        $this->assertDatabaseMissing('organization_modules', [
+            'module' => 'Core',
+        ]);
+        $this->assertDatabaseMissing('users', [
+            'email' => 'rollback-admin@example.com',
         ]);
     }
 

@@ -9,7 +9,8 @@ enum MembershipApplicationStatus: string
     case VERIFIED = 'verified';
     case REVIEWED = 'reviewed';
     case APPROVED = 'approved';
-    case PAYMENT = 'payment';
+    case PENDING_PAYMENT = 'pending_payment';
+    case PENDING_CONFIRMATION = 'pending_confirmation';
     case CONFIRMED = 'confirmed';
     case REJECTED = 'rejected';
     case WITHDRAWN = 'withdrawn';

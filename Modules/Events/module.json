@@ -1,0 +1,9 @@
+{
+    "name": "Events",
+    "alias": "events",
+    "description": "Organization-scoped event management, invitations, passes, and attendance.",
+    "keywords": ["Saradhi", "events", "attendance"],
+    "priority": 20,
+    "providers": ["Modules\\Events\\Providers\\EventsServiceProvider"],
+    "files": []
+}

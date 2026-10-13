@@ -23,6 +23,8 @@ class OrganizationIdentificationService
         bool $isRequired = false,
         bool $requiresDocument = false,
         array $documentRequirements = [],
+        bool $hasExpiry = false,
+        array $expiryReminderDays = [],
     ): OrganizationIdentification {
         if ($requiresDocument && $documentRequirements === []) {
             $documentRequirements = ['document'];
@@ -35,6 +37,11 @@ class OrganizationIdentificationService
             documentRequirements: $documentRequirements,
         );
 
+        $expiryReminderDays = $this->normalizeExpiryReminderDays(
+            hasExpiry: $hasExpiry,
+            reminderDays: $expiryReminderDays,
+        );
+
         return DB::transaction(function () use (
             $organization,
             $identificationType,
@@ -42,6 +49,8 @@ class OrganizationIdentificationService
             $isRequired,
             $requiresDocument,
             $documentRequirements,
+            $hasExpiry,
+            $expiryReminderDays,
         ) {
             return OrganizationIdentification::updateOrCreate(
                 [
@@ -53,6 +62,8 @@ class OrganizationIdentificationService
                     'is_required' => $isRequired,
                     'requires_document' => $requiresDocument,
                     'document_requirements' => $documentRequirements,
+                    'has_expiry' => $hasExpiry,
+                    'expiry_reminder_days' => $expiryReminderDays,
                 ],
             );
         });
@@ -108,6 +119,9 @@ class OrganizationIdentificationService
             requiresDocument: $configuration?->requires_document ?? false,
             documentRequirements:
                 $configuration?->document_requirements ?? [],
+            hasExpiry: $configuration?->has_expiry ?? false,
+            expiryReminderDays:
+                $configuration?->expiry_reminder_days ?? [],
         );
     }
 
@@ -145,6 +159,29 @@ class OrganizationIdentificationService
             documentRequirements: $required
                 ? $documentRequirements
                 : [],
+            hasExpiry: $configuration?->has_expiry ?? false,
+            expiryReminderDays:
+                $configuration?->expiry_reminder_days ?? [],
+        );
+    }
+
+    public function setExpiryNotifications(
+        Organization $organization,
+        IdentificationType $identificationType,
+        bool $hasExpiry,
+        array $reminderDays = [],
+    ): OrganizationIdentification {
+        $configuration = $this->get($organization, $identificationType);
+
+        return $this->configure(
+            organization: $organization,
+            identificationType: $identificationType,
+            isEnabled: $configuration?->is_enabled ?? true,
+            isRequired: $configuration?->is_required ?? false,
+            requiresDocument: $configuration?->requires_document ?? false,
+            documentRequirements: $configuration?->document_requirements ?? [],
+            hasExpiry: $hasExpiry,
+            expiryReminderDays: $reminderDays,
         );
     }
 
@@ -179,6 +216,33 @@ class OrganizationIdentificationService
             ->where('is_enabled', true)
             ->where('is_required', true)
             ->get();
+    }
+
+    private function normalizeExpiryReminderDays(
+        bool $hasExpiry,
+        array $reminderDays,
+    ): array {
+        if (! $hasExpiry) {
+            return [];
+        }
+
+        $normalized = collect($reminderDays)
+            ->filter(fn ($days): bool => is_int($days) || (is_string($days) && ctype_digit($days)))
+            ->map(fn ($days): int => (int) $days)
+            ->filter(fn (int $days): bool => $days >= 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($normalized === []) {
+            throw ValidationException::withMessages([
+                'expiry_reminder_days' =>
+                    'At least one non-negative expiry reminder day is required when expiry notifications are enabled.',
+            ]);
+        }
+
+        return $normalized;
     }
 
     private function validateDocumentRequirements(

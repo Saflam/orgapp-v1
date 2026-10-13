@@ -26,6 +26,7 @@ class UserIdentificationService
             ],
             [
                 'identification_number' => $data['identification_number'],
+                'expires_at' => $data['expires_at'] ?? null,
                 'metadata' => $data['metadata'] ?? null,
             ],
         );
@@ -45,6 +46,7 @@ class UserIdentificationService
             'user_id' => $user->id,
             'identification_type_id' => $identificationType->id,
             'identification_number' => $data['identification_number'],
+            'expires_at' => $data['expires_at'] ?? null,
             'metadata' => $data['metadata'] ?? null,
         ]);
     }
@@ -60,6 +62,7 @@ class UserIdentificationService
     ): UserIdentification {
         $identification->update([
             'identification_number' => $data['identification_number'],
+            'expires_at' => $data['expires_at'] ?? $identification->expires_at,
             'metadata' => $data['metadata'] ?? $identification->metadata,
         ]);
 

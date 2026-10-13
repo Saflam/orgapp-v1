@@ -29,11 +29,13 @@ class PermissionMiddleware
 
         $context = $this->contextResolver->resolve($request);
 
-        if (! $this->authorizationService->can(
+        $allowed = $this->authorizationService->can(
             $user,
             $permission,
             $context,
-        )) {
+        );
+
+        if (! $allowed) {
             abort(403);
         }
 

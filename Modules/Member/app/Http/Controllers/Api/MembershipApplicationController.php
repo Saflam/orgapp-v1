@@ -5,25 +5,33 @@ namespace Modules\Member\Http\Controllers\Api;
 use App\Support\Organization\CurrentOrganization;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
+use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
+use Modules\Core\Services\AuthorizationService;
 use Modules\Core\Services\OrganizationIdentificationService;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Http\Requests\ConfirmMembershipApplicationRequest;
 use Modules\Member\Http\Requests\MembershipApplicationDecisionRequest;
 use Modules\Member\Http\Requests\StoreMembershipApplicationRequest;
+use Modules\Member\Http\Requests\UpdateMembershipApplicationRequest;
 use Modules\Member\Http\Resources\MembershipApplicationResource;
 use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Services\MembershipApplicationExtensionRegistry;
+use Modules\Member\Services\MembershipApplicationEditService;
 use Modules\Member\Services\MembershipApplicationService;
 use Modules\Member\Services\MembershipApplicationWorkflowService;
+use Modules\Member\Services\MemberPaymentService;
 
 class MembershipApplicationController
 {
     public function __construct(
         private MembershipApplicationService $applicationService,
+        private MembershipApplicationEditService $editService,
         private MembershipApplicationWorkflowService $workflowService,
+        private MemberPaymentService $paymentObligationService,
         private OrganizationIdentificationService $identificationService,
         private MembershipApplicationExtensionRegistry $extensionRegistry,
+        private AuthorizationService $authorizationService,
     ) {
     }
 
@@ -39,6 +47,7 @@ class MembershipApplicationController
             'address' => [
                 'fields' => $this->addressFields(),
             ],
+            'membership_types' => $this->membershipTypes($organization),
             'extensions' => $this->extensionRegistry->fields($organization),
             'identifications' => $this->identificationFields($organization),
             'documents' => $this->documentFields($organization),
@@ -62,6 +71,7 @@ class MembershipApplicationController
             organization: $organization,
             identifications: $validated['identifications'] ?? [],
             documents: $validated['identification_documents'] ?? [],
+            expiryDates: $validated['identification_expiry_dates'] ?? [],
         );
 
         $application = $this->applicationService->submit(
@@ -92,6 +102,7 @@ class MembershipApplicationController
                             $identification['code'] => [
                                 'identification_type_id' => $identification['identification_type_id'],
                                 'identification_number' => $identification['identification_number'],
+                                'expires_at' => $identification['expires_at'] ?? null,
                             ],
                         ]
                     )
@@ -116,7 +127,38 @@ class MembershipApplicationController
                 $membershipApplication->load([
                     'membershipType',
                     'statusHistories.actor',
+                    'changes.actor',
                 ])
+            )
+        );
+    }
+
+    public function update(
+        UpdateMembershipApplicationRequest $request,
+        MembershipApplication $membershipApplication,
+    ): JsonResponse {
+        $this->ensureApplicationBelongsToCurrentOrganization($membershipApplication);
+
+        $changes = $request->validated();
+
+        if (array_key_exists('unit_id', $changes['member'] ?? [])) {
+            $this->authorizeUnitAssignment(
+                actor: $request->user(),
+                unitId: $changes['member']['unit_id'] === null
+                    ? null
+                    : (int) $changes['member']['unit_id'],
+            );
+        }
+
+        $application = $this->editService->update(
+            application: $membershipApplication,
+            actor: $request->user(),
+            changes: $changes,
+        );
+
+        return response()->json(
+            new MembershipApplicationResource(
+                $application->load(['membershipType', 'statusHistories.actor', 'changes.actor'])
             )
         );
     }
@@ -158,13 +200,18 @@ class MembershipApplicationController
     {
         $this->ensureApplicationBelongsToCurrentOrganization($membershipApplication);
 
-        $application = $this->workflowService->transition(
+        $application = $this->paymentObligationService->markApplicationPaid(
             application: $membershipApplication,
-            to: MembershipApplicationStatus::PAYMENT,
             actor: request()->user(),
+            scopeType: $membershipApplication->unitId() === null ? 'organization' : 'unit',
+            scopeId: $membershipApplication->unitId(),
         );
 
-        return response()->json(new MembershipApplicationResource($application));
+        return response()->json(
+            new MembershipApplicationResource(
+                $application->load(['membershipType', 'paymentObligations', 'statusHistories.actor'])
+            )
+        );
     }
 
     public function confirm(
@@ -209,6 +256,34 @@ class MembershipApplicationController
         }
 
         return response()->json(new MembershipApplicationResource($application));
+    }
+
+    /**
+     * Prevent a unit-scoped reviewer from moving an application into a
+     * different authorization context (including organization scope).
+     *
+     * The route middleware authorizes access to the application's current
+     * context. When unit_id changes, authorization must also be checked for
+     * the target context before the new unit is persisted.
+     */
+    private function authorizeUnitAssignment(
+        \App\Models\User $actor,
+        ?int $unitId,
+    ): void {
+        $organization = $this->organization();
+
+        $context = new AuthorizationContext(
+            organizationId: $organization->id,
+            unitId: $unitId,
+        );
+
+        if (! $this->authorizationService->can(
+            $actor,
+            'membership.application.edit',
+            $context,
+        )) {
+            abort(403);
+        }
     }
 
     private function organization(): Organization
@@ -267,6 +342,22 @@ class MembershipApplicationController
         return $steps;
     }
 
+    private function membershipTypes(Organization $organization): array
+    {
+        return \Modules\Member\Models\MembershipType::query()
+            ->where('organization_id', $organization->id)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'code', 'description'])
+            ->map(fn ($membershipType): array => [
+                'id' => $membershipType->id,
+                'name' => $membershipType->name,
+                'code' => $membershipType->code,
+                'description' => $membershipType->description,
+            ])
+            ->all();
+    }
+
     private function personalFields(): array
     {
         return [
@@ -311,6 +402,8 @@ class MembershipApplicationController
                     'required' => $configuration->is_required,
                     'requires_document' => $configuration->requires_document,
                     'document_requirements' => $configuration->document_requirements ?? [],
+                    'has_expiry' => $configuration->has_expiry,
+                    'expiry_reminder_days' => $configuration->expiry_reminder_days ?? [],
                 ],
             ])
             ->all();
@@ -340,6 +433,7 @@ class MembershipApplicationController
         Organization $organization,
         array $identifications,
         array $documents = [],
+        array $expiryDates = [],
     ): array {
         $configurations = $this->identificationService
             ->enabled($organization)
@@ -365,6 +459,7 @@ class MembershipApplicationController
                     'code' => $code,
                     'identification_type_id' => $configuration->identificationType->id,
                     'identification_number' => $identifications[$code] ?? null,
+                    'expires_at' => $expiryDates[$code] ?? null,
                     'documents' => $documents[$code] ?? [],
                 ];
             })

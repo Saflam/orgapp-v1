@@ -66,12 +66,12 @@ class AuthorizationService
         AuthorizationContext $context,
     ): bool {
         if ($assignment->context_type === 'organization') {
-            return $assignment->context_id === $context->organizationId;
+            return (string) $assignment->context_id === (string) $context->organizationId;
         }
 
         if ($assignment->context_type === 'unit') {
             return $context->unitId !== null
-                && $assignment->context_id === $context->unitId;
+                && (string) $assignment->context_id === (string) $context->unitId;
         }
 
         return false;

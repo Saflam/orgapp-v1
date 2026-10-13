@@ -1,20 +1,8 @@
 {
-    "name": "Saflivo/finance",
-    "description": "Saflivo fees, policies, assessments and payments domain.",
-    "authors": [
-        {
-            "name": "Safeer Aslam",
-            "email": "safeeraslamc@gmail.com"
-        }
-    ],
-    "extra": {
-        "laravel": {
-            "providers": [],
-            "aliases": {
-
-            }
-        }
-    },
+    "name": "modules/finance",
+    "description": "General-purpose Finance module for Saradhi",
+    "type": "library",
+    "license": "MIT",
     "autoload": {
         "psr-4": {
             "Modules\\Finance\\": "app/",
@@ -22,9 +10,11 @@
             "Modules\\Finance\\Database\\Seeders\\": "database/seeders/"
         }
     },
-    "autoload-dev": {
-        "psr-4": {
-            "Modules\\Finance\\Tests\\": "tests/"
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\Finance\\Providers\\FinanceServiceProvider"
+            ]
         }
     }
 }

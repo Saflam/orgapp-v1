@@ -47,6 +47,12 @@ class MemberPermissionProvider implements PermissionProvider
             ],
             [
                 'module' => 'member',
+                'name' => 'Edit Membership Applications',
+                'code' => 'membership.application.edit',
+                'description' => 'Edit permitted membership application data during verification and review.',
+            ],
+            [
+                'module' => 'member',
                 'name' => 'Verify Membership Applications',
                 'code' => 'membership.application.verify',
                 'description' => 'Verify or reject submitted membership applications.',
@@ -65,15 +71,69 @@ class MemberPermissionProvider implements PermissionProvider
             ],
             [
                 'module' => 'member',
-                'name' => 'Receive Membership Application Payment',
-                'code' => 'membership.application.receive-payment',
-                'description' => 'Record receipt of fees for approved membership applications.',
+                'name' => 'View Member Payment Items',
+                'code' => 'membership.payment-item.view',
+                'description' => 'View organization member payment items, rates, and allocations.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Manage Member Payment Items',
+                'code' => 'membership.payment-item.manage',
+                'description' => 'Create and update organization member payment items, rates, allocations, and reminder settings.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'View Membership Payments',
+                'code' => 'membership.payment.view',
+                'description' => 'View pending membership payment obligations.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Receive Membership Payments',
+                'code' => 'membership.payment.receive',
+                'description' => 'Record receipt of membership payment obligations.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Discount Membership Payments',
+                'code' => 'membership.payment.discount',
+                'description' => 'Apply an authorized discount or waiver to a pending membership payment obligation.',
             ],
             [
                 'module' => 'member',
                 'name' => 'Confirm Membership Applications',
                 'code' => 'membership.application.confirm',
                 'description' => 'Confirm approved and paid applications and create active membership.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'View Unit Transfers',
+                'code' => 'member.unit-transfer.view',
+                'description' => 'View unit transfer requests within the assigned authorization context.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Submit Unit Transfers',
+                'code' => 'member.unit-transfer.submit',
+                'description' => 'Submit unit transfer requests for eligible members.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Approve Unit Transfers',
+                'code' => 'member.unit-transfer.approve',
+                'description' => 'Approve a unit transfer request within the assigned unit context.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Reject Unit Transfers',
+                'code' => 'member.unit-transfer.reject',
+                'description' => 'Reject a unit transfer request within the assigned unit context.',
+            ],
+            [
+                'module' => 'member',
+                'name' => 'Complete Unit Transfers',
+                'code' => 'member.unit-transfer.complete',
+                'description' => 'Complete an approved unit transfer within an authorized source or target unit context.',
             ],
         ];
     }

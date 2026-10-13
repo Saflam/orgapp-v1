@@ -125,6 +125,48 @@ class SaradhiMembershipApplicationExtension implements MembershipApplicationExte
 
     /**
      * @param array<string, mixed> $data
+     * @return array<string, array<int, string>>
+     */
+    public function validate(
+        Organization $organization,
+        array $data,
+    ): array {
+        $errors = [];
+        $introducerUnitId = $data['introducer_unit_id'] ?? null;
+        $introducerMid = $data['introducer_mid'] ?? null;
+
+        if ($introducerUnitId !== null) {
+            $unitExists = Unit::query()
+                ->whereKey($introducerUnitId)
+                ->where('organization_id', $organization->id)
+                ->exists();
+
+            if (! $unitExists) {
+                $errors['introducer_unit_id'][] =
+                    'The selected introducer unit does not belong to the selected organization.';
+            }
+        }
+
+        if ($introducerMid !== null && $introducerMid !== '') {
+            $introducer = Member::query()
+                ->where('organization_id', $organization->id)
+                ->where('membership_number', $introducerMid)
+                ->first();
+
+            if (! $introducer) {
+                $errors['introducer_mid'][] =
+                    'The selected introducer MID does not belong to this organization.';
+            } elseif ($introducerUnitId !== null && (int) $introducer->unit_id !== (int) $introducerUnitId) {
+                $errors['introducer_unit_id'][] =
+                    'The selected introducer does not belong to the selected unit.';
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<string, mixed> $data
      */
     public function persist(
         Organization $organization,
@@ -135,24 +177,16 @@ class SaradhiMembershipApplicationExtension implements MembershipApplicationExte
             return;
         }
 
-        $introducerUnitId = $data['introducer_unit_id'] ?? null;
+        $validationErrors = $this->validate(
+            organization: $organization,
+            data: $data,
+        );
 
-        if ($introducerUnitId !== null) {
-            $belongsToOrganization = Unit::query()
-                ->whereKey($introducerUnitId)
-                ->where(
-                    'organization_id',
-                    $organization->id
-                )
-                ->exists();
-
-            if (! $belongsToOrganization) {
-                throw ValidationException::withMessages([
-                    'introducer_unit_id' =>
-                        'The selected introducer unit does not belong to the selected organization.',
-                ]);
-            }
+        if ($validationErrors !== []) {
+            throw ValidationException::withMessages($validationErrors);
         }
+
+        $introducerUnitId = $data['introducer_unit_id'] ?? null;
 
         SaradhiMemberProfile::query()->updateOrCreate(
             [

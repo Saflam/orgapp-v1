@@ -73,6 +73,31 @@ class MembershipApplicationExtensionRegistry
     }
 
     /**
+     * @param array<string, array<string, mixed>> $extensionData
+     * @return array<string, array<string, array<int, mixed>>>
+     */
+    public function validationRulesForData(
+        Organization $organization,
+        array $extensionData,
+    ): array {
+        $rules = [];
+
+        foreach ($this->enabledFor($organization) as $extension) {
+            $module = $extension->module();
+            $moduleRules = $extension->validate(
+                organization: $organization,
+                data: $extensionData[$module] ?? [],
+            );
+
+            if ($moduleRules !== []) {
+                $rules[$module] = $moduleRules;
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
      * Persist all enabled extension data.
      *
      * @param array<string, array<string, mixed>> $extensionData

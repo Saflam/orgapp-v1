@@ -62,12 +62,23 @@ class MembershipApplication extends Model implements AuthorizationContext, HasMe
         return $this->belongsTo(Member::class);
     }
 
+    public function paymentObligations(): HasMany
+    {
+        return $this->hasMany(MemberPaymentObligation::class, 'membership_application_id');
+    }
+
     public function membershipType(): BelongsTo
     {
         return $this->belongsTo(
             MembershipType::class,
             'membership_type_id'
         );
+    }
+
+    public function changes(): HasMany
+    {
+        return $this->hasMany(MembershipApplicationChange::class)
+            ->latest('id');
     }
 
     public function statusHistories(): HasMany

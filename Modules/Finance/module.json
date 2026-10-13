@@ -1,9 +1,9 @@
 {
     "name": "Finance",
     "alias": "finance",
-    "description": "Saflivo fees, policies, assessments and payments domain.",
-    "keywords": ["Saflivo", "finance", "fees", "payments"],
-    "priority": 0,
+    "description": "General-purpose financial accounting, sales, purchasing, and module integration domain.",
+    "keywords": ["Saradhi", "finance", "accounting"],
+    "priority": 20,
     "providers": [
         "Modules\\Finance\\Providers\\FinanceServiceProvider"
     ],

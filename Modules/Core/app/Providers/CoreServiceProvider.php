@@ -41,6 +41,7 @@ class CoreServiceProvider extends ModuleServiceProvider
         RouteServiceProvider::class,
         PermissionServiceProvider::class,
         RoleServiceProvider::class,
+        NotificationServiceProvider::class,
     ];
 
     public function register(): void
@@ -57,6 +58,13 @@ class CoreServiceProvider extends ModuleServiceProvider
         $this->app->singleton(
             \Modules\Core\Services\AuthorizationContributorRegistry::class,
             fn () => new \Modules\Core\Services\AuthorizationContributorRegistry(),
+        );
+
+        $this->app->afterResolving(
+            \Modules\Core\Services\PermissionRegistry::class,
+            function (\Modules\Core\Services\PermissionRegistry $registry): void {
+                $registry->registerProvider(new CorePermissionProvider());
+            }
         );
 
         $this->app->afterResolving(

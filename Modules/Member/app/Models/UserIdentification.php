@@ -17,12 +17,14 @@ class UserIdentification extends Model implements HasMedia
         'user_id',
         'identification_type_id',
         'identification_number',
+        'expires_at',
         'metadata',
     ];
 
     protected function casts(): array
     {
         return [
+            'expires_at' => 'date',
             'metadata' => 'array',
         ];
     }

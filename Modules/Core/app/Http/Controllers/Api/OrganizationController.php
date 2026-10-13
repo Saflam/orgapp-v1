@@ -144,6 +144,7 @@ class OrganizationController
             'module' => [
                 'module' => $module,
                 'is_enabled' => true,
+                'is_required' => $moduleService->isRequired($module),
             ],
         ]);
     }
@@ -163,6 +164,7 @@ class OrganizationController
             'module' => [
                 'module' => $module,
                 'is_enabled' => false,
+                'is_required' => $moduleService->isRequired($module),
             ],
         ]);
     }

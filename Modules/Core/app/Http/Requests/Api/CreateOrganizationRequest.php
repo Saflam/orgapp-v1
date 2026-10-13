@@ -38,6 +38,21 @@ class CreateOrganizationRequest extends FormRequest
                 'size:3',
             ],
 
+            'notification_channels' => [
+                'sometimes',
+                'array',
+            ],
+
+            'notification_channels.whatsapp.use_system_default' => [
+                'sometimes',
+                'boolean',
+            ],
+
+            'notification_channels.sms.use_system_default' => [
+                'sometimes',
+                'boolean',
+            ],
+
             'super_admin.name' => [
                 'required',
                 'string',

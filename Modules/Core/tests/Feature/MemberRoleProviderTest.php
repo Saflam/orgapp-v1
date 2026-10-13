@@ -13,11 +13,15 @@ class MemberRoleProviderTest extends TestCase
 
         $roles = $provider->roles();
 
-        $this->assertCount(1, $roles);
+        $this->assertCount(3, $roles);
 
         $this->assertSame(
-            'organization_admin',
-            $roles[0]['code']
+            [
+                'organization_admin',
+                'unit_transfer_approver',
+                'unit_transfer_coordinator',
+            ],
+            array_column($roles, 'code')
         );
 
         $this->assertSame(

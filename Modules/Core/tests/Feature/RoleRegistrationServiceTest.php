@@ -7,6 +7,8 @@ use Modules\Core\Contracts\RoleProvider;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
+use Modules\Core\Services\PermissionRegistry;
+use Modules\Core\Services\PermissionRegistrationService;
 use Modules\Core\Services\RoleRegistrationService;
 use Modules\Member\Providers\MemberPermissionProvider;
 use Modules\Member\Providers\MemberRoleProvider;
@@ -162,6 +164,8 @@ class RoleRegistrationServiceTest extends TestCase
 
     public function test_core_role_is_registered_as_a_global_system_role(): void
     {
+        $this->registerCorePermissions();
+
         $organization = Organization::factory()->create();
 
         $service = app(RoleRegistrationService::class);
@@ -210,4 +214,11 @@ class RoleRegistrationServiceTest extends TestCase
             Permission::create($permission);
         }
     }
+    private function registerCorePermissions(): void
+    {
+        app(PermissionRegistry::class)->registerPermissions(
+            app(PermissionRegistrationService::class)
+        );
+    }
+
 }

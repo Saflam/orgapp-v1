@@ -19,6 +19,22 @@ class AuthorizationContextResolver
     {
         $organization = $this->currentOrganization->get();
 
+        $explicitContext = $request->attributes->get('authorization.context');
+        if ($explicitContext instanceof AuthorizationContextContract) {
+            if ($explicitContext->organizationId() !== $organization->id) {
+                throw new NotFoundHttpException(
+                    'Authorization context does not belong to the current organization.'
+                );
+            }
+
+            return new AuthorizationContext(
+                organizationId: $organization->id,
+                unitId: $explicitContext->contextType() === 'unit'
+                    ? (int) $explicitContext->contextId()
+                    : null,
+            );
+        }
+
         foreach ($request->route()?->parameters() ?? [] as $parameter) {
             if (! $parameter instanceof AuthorizationContextContract) {
                 continue;

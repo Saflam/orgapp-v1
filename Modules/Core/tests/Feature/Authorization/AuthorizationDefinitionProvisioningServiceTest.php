@@ -3,6 +3,7 @@
 namespace Modules\Core\Tests\Feature\Authorization;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
 use Modules\Core\Services\AuthorizationDefinitionProvisioningService;
 use Tests\TestCase;
@@ -51,7 +52,33 @@ class AuthorizationDefinitionProvisioningServiceTest extends TestCase
         );
 
         $service->provision();
+
+        $permissionsAfterFirstProvision = Permission::query()
+            ->orderBy('code')
+            ->get([
+                'code',
+                'module',
+                'name',
+                'description',
+            ])
+            ->toArray();
+
         $service->provision();
+
+        $permissionsAfterSecondProvision = Permission::query()
+            ->orderBy('code')
+            ->get([
+                'code',
+                'module',
+                'name',
+                'description',
+            ])
+            ->toArray();
+
+        $this->assertSame(
+            $permissionsAfterFirstProvision,
+            $permissionsAfterSecondProvision
+        );
 
         $this->assertSame(
             1,
@@ -60,7 +87,5 @@ class AuthorizationDefinitionProvisioningServiceTest extends TestCase
                 ->where('code', 'super_admin')
                 ->count()
         );
-
-        $this->assertDatabaseCount('permissions', 11);
     }
 }

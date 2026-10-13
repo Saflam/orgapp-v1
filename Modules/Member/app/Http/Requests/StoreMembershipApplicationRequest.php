@@ -4,6 +4,8 @@ namespace Modules\Member\Http\Requests;
 
 use App\Support\Organization\CurrentOrganization;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Illuminate\Contracts\Validation\Validator;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\OrganizationIdentificationService;
 use Modules\Member\Services\MembershipApplicationExtensionRegistry;
@@ -15,6 +17,42 @@ class StoreMembershipApplicationRequest extends FormRequest
         return true;
     }
 
+    protected function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $organization = $this->resolveOrganization();
+
+            if (! $organization instanceof Organization) {
+                return;
+            }
+
+            $extensionData = $this->input('extension_data', []);
+
+            if (! is_array($extensionData)) {
+                return;
+            }
+
+            foreach (app(MembershipApplicationExtensionRegistry::class)
+                ->enabledFor($organization) as $extension) {
+                $messages = $extension->validate(
+                    organization: $organization,
+                    data: is_array($extensionData[$extension->module()] ?? null)
+                        ? $extensionData[$extension->module()]
+                        : [],
+                );
+
+                foreach ($messages as $field => $fieldMessages) {
+                    foreach ($fieldMessages as $message) {
+                        $validator->errors()->add(
+                            "extension_data.{$extension->module()}.{$field}",
+                            $message,
+                        );
+                    }
+                }
+            }
+        });
+    }
+
     public function rules(): array
     {
         $organization = $this->resolveOrganization();
@@ -23,7 +61,7 @@ class StoreMembershipApplicationRequest extends FormRequest
             return $this->baseRules();
         }
 
-        $rules = $this->baseRules();
+        $rules = $this->baseRules($organization);
 
         $extensionRules = app(
             MembershipApplicationExtensionRegistry::class
@@ -99,6 +137,33 @@ class StoreMembershipApplicationRequest extends FormRequest
                     }
                 },
             ],
+            'identification_expiry_dates' => [
+                'sometimes',
+                'array',
+                function (
+                    string $attribute,
+                    mixed $value,
+                    \Closure $fail,
+                ) use ($configurations): void {
+                    if (! is_array($value)) {
+                        return;
+                    }
+
+                    $configurationMap = $configurations->keyBy(
+                        fn ($configuration) => $configuration->identificationType->code
+                    );
+
+                    foreach ($value as $code => $date) {
+                        $configuration = $configurationMap->get($code);
+
+                        if ($configuration === null || ! $configuration->has_expiry) {
+                            $fail(
+                                "Identification type [{$code}] does not support expiry dates for this organization."
+                            );
+                        }
+                    }
+                },
+            ],
             'identification_documents' => [
                 'sometimes',
                 'array',
@@ -153,6 +218,11 @@ class StoreMembershipApplicationRequest extends FormRequest
         foreach ($configurations as $configuration) {
             $code = $configuration->identificationType->code;
 
+            $rules["identification_expiry_dates.{$code}"] = [
+                'sometimes',
+                $configuration->has_expiry ? 'date' : 'prohibited',
+            ];
+
             $rules["identifications.{$code}"] = [
                 $configuration->is_required ? 'required' : 'nullable',
                 'string',
@@ -182,7 +252,7 @@ class StoreMembershipApplicationRequest extends FormRequest
     /**
      * @return array<string, array<int, mixed>>
      */
-    private function baseRules(): array
+    private function baseRules(?Organization $organization = null): array
     {
         return [
             'user_id' => [
@@ -252,7 +322,9 @@ class StoreMembershipApplicationRequest extends FormRequest
             'unit_id' => [
                 'nullable',
                 'integer',
-                'exists:units,id',
+                $organization instanceof Organization
+                    ? Rule::exists('units', 'id')->where('organization_id', $organization->id)
+                    : 'exists:units,id',
             ],
             'address' => [
                 'required',

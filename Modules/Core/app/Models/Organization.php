@@ -2,6 +2,8 @@
 
 namespace Modules\Core\Models;
 
+use Modules\Core\Models\OrganizationNotificationChannel;
+
 use App\Models\OrganizationMembership;
 use Cviebrock\EloquentSluggable\Sluggable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -60,6 +62,11 @@ class Organization extends Model implements AuthorizationContext
     public function settings(): HasMany
     {
         return $this->hasMany(OrganizationSetting::class);
+    }
+
+    public function notificationChannels(): HasMany
+    {
+        return $this->hasMany(OrganizationNotificationChannel::class);
     }
 
     public function modules(): HasMany

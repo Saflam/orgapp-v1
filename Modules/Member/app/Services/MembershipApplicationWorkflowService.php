@@ -6,6 +6,12 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Member\Enums\MembershipApplicationStatus;
+use Modules\Member\Enums\MemberPaymentObligationStatus;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationApproved;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationReviewed;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationVerified;
+use Modules\Member\Events\MembershipApplication\MembershipConfirmed;
+use Modules\Member\Events\MembershipApplication\MembershipPaymentRequired;
 use Modules\Member\Models\MembershipApplication;
 
 class MembershipApplicationWorkflowService
@@ -13,6 +19,7 @@ class MembershipApplicationWorkflowService
     public function __construct(
         private MemberRegistrationService $registrationService,
         private MembershipLifecycleService $membershipLifecycleService,
+        private MemberPaymentService $paymentObligationService,
     ) {
     }
 
@@ -54,7 +61,27 @@ class MembershipApplicationWorkflowService
                 'metadata' => [],
             ]);
 
-            return $application->refresh();
+            if ($to === MembershipApplicationStatus::PENDING_PAYMENT) {
+                $this->paymentObligationService->createApplicationObligations($application);
+            }
+
+            $application = $application->refresh();
+
+            $event = match ($to) {
+                MembershipApplicationStatus::VERIFIED => new MembershipApplicationVerified($application),
+                MembershipApplicationStatus::REVIEWED => new MembershipApplicationReviewed($application),
+                MembershipApplicationStatus::APPROVED => new MembershipApplicationApproved($application),
+                MembershipApplicationStatus::PENDING_PAYMENT => new MembershipPaymentRequired($application),
+                default => null,
+            };
+
+            if ($event !== null) {
+                DB::afterCommit(function () use ($event): void {
+                    event($event);
+                });
+            }
+
+            return $application;
         });
     }
 
@@ -85,18 +112,31 @@ class MembershipApplicationWorkflowService
         string $membershipNumber,
         string $startsAt,
     ): MembershipApplication {
-        if ($application->status !== MembershipApplicationStatus::PAYMENT) {
-            throw ValidationException::withMessages([
-                'status' => 'Only applications awaiting payment confirmation can be confirmed.',
-            ]);
-        }
-
         return DB::transaction(function () use (
             $application,
             $actor,
             $membershipNumber,
             $startsAt,
         ): MembershipApplication {
+            // Serialize confirmation attempts for this application. The status
+            // check must use the locked, current database row, not a stale model
+            // supplied by the controller.
+            $application = MembershipApplication::query()
+                ->whereKey($application->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($application->status !== MembershipApplicationStatus::PENDING_CONFIRMATION) {
+                throw ValidationException::withMessages([
+                    'status' => 'Only applications awaiting payment confirmation can be confirmed.',
+                ]);
+            }
+
+            // Check payment state inside the same transaction as confirmation
+            // so a concurrent confirmation/payment update cannot slip between
+            // validation and member creation.
+            $this->paymentObligationService->ensureApplicationFullyPaid($application);
+
             $data = $application->data ?? [];
             $memberData = $data['member'] ?? [];
 
@@ -135,13 +175,26 @@ class MembershipApplicationWorkflowService
             $membership = $member->memberships()->latest('id')->firstOrFail();
             $this->membershipLifecycleService->activate($membership);
 
+            $application->paymentObligations()->update([
+                'membership_id' => $membership->id,
+                'member_id' => $member->id,
+            ]);
+
+            \Modules\Member\Models\MemberPayment::query()
+                ->where('membership_application_id', $application->id)
+                ->whereNull('member_id')
+                ->update([
+                    'membership_id' => $membership->id,
+                    'member_id' => $member->id,
+                ]);
+
             $application->update([
                 'member_id' => $member->id,
                 'status' => MembershipApplicationStatus::CONFIRMED,
             ]);
 
             $application->statusHistories()->create([
-                'from_status' => MembershipApplicationStatus::PAYMENT->value,
+                'from_status' => MembershipApplicationStatus::PENDING_CONFIRMATION->value,
                 'to_status' => MembershipApplicationStatus::CONFIRMED->value,
                 'actor_user_id' => $actor->id,
                 'notes' => null,
@@ -151,11 +204,17 @@ class MembershipApplicationWorkflowService
                 ],
             ]);
 
-            return $application->refresh()->load([
+            $application = $application->refresh()->load([
                 'user.details',
                 'membershipType',
                 'statusHistories.actor',
             ]);
+
+            DB::afterCommit(function () use ($application): void {
+                event(new MembershipConfirmed($application));
+            });
+
+            return $application;
         });
     }
 
@@ -177,8 +236,7 @@ class MembershipApplicationWorkflowService
                 MembershipApplicationStatus::APPROVED,
                 MembershipApplicationStatus::REJECTED,
             ], true),
-            MembershipApplicationStatus::APPROVED => $to === MembershipApplicationStatus::PAYMENT,
-            MembershipApplicationStatus::PAYMENT => $to === MembershipApplicationStatus::CONFIRMED,
+            MembershipApplicationStatus::APPROVED => $to === MembershipApplicationStatus::PENDING_PAYMENT,
             MembershipApplicationStatus::REJECTED => $to === MembershipApplicationStatus::DRAFT,
             default => false,
         };

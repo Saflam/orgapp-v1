@@ -191,6 +191,8 @@ class RoleRegistryTest extends TestCase
 
     public function test_it_registers_global_roles_separately(): void
     {
+        $this->registerPermissions();
+
         $organization = Organization::factory()->create();
 
         $registry = app(RoleRegistry::class);

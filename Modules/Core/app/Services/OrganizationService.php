@@ -12,6 +12,7 @@ class OrganizationService
         private readonly OrganizationModuleService $moduleService,
         private readonly ModuleRegistry $moduleRegistry,
         private readonly SuperAdminProvisioningService $superAdminProvisioningService,
+        private readonly NotificationService $notificationService,
     ) {
     }
 
@@ -27,6 +28,10 @@ class OrganizationService
             );
 
             $this->initializeModules($organization);
+            $this->initializeNotificationChannels(
+                $organization,
+                $data['notification_channels'] ?? [],
+            );
 
             $this->superAdminProvisioningService->provision(
                 $organization,
@@ -55,6 +60,19 @@ class OrganizationService
         return $organization->fresh();
     }
 
+    private function initializeNotificationChannels(Organization $organization, array $channels): void
+    {
+        foreach (['whatsapp', 'sms'] as $channel) {
+            $allowed = (bool) ($channels[$channel]['use_system_default'] ?? false);
+
+            $this->notificationService->setSystemDefaultAccess(
+                $organization,
+                $channel,
+                $allowed,
+            );
+        }
+    }
+
     private function ensureSuperAdminEmailIsAvailable(string $email): void
     {
         if (User::query()->where('email', $email)->exists()) {
@@ -67,13 +85,21 @@ class OrganizationService
 
     private function initializeModules(Organization $organization): void
     {
+        // Required modules are initialized explicitly rather than relying on
+        // their presence in the optional-module registry iteration. If a
+        // required module is unavailable in this deployment, enable() throws
+        // and the surrounding organization-creation transaction rolls back.
+        foreach ($this->moduleService->requiredModules() as $module) {
+            $this->moduleService->enable(
+                $organization,
+                $module,
+            );
+        }
+
+        // Optional modules start disabled for every new organization. Their
+        // activation remains an organization-specific decision.
         foreach ($this->moduleRegistry->enabledNames() as $module) {
             if ($this->moduleService->isRequired($module)) {
-                $this->moduleService->enable(
-                    $organization,
-                    $module,
-                );
-
                 continue;
             }
 

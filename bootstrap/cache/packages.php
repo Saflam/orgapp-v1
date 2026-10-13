@@ -34,6 +34,17 @@
       0 => 'Laravel\\Tinker\\TinkerServiceProvider',
     ),
   ),
+  'linkxtr/laravel-qrcode' => 
+  array (
+    'aliases' => 
+    array (
+      'QrCode' => 'Linkxtr\\QrCode\\Facades\\QrCode',
+    ),
+    'providers' => 
+    array (
+      0 => 'Linkxtr\\QrCode\\QrCodeServiceProvider',
+    ),
+  ),
   'nesbot/carbon' => 
   array (
     'providers' => 

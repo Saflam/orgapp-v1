@@ -11,6 +11,8 @@ use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Enums\MembershipStatus;
 use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Models\MembershipType;
+use Modules\Member\Models\MemberPaymentItem;
+use Modules\Member\Models\MemberPaymentItemRate;
 use Modules\Member\Services\MembershipApplicationWorkflowService;
 use Tests\TestCase;
 
@@ -21,20 +23,22 @@ class MembershipApplicationWorkflowTest extends TestCase
     public function test_it_records_every_accepted_transition(): void
     {
         [$application, $actor] = $this->applicationContext();
+        $this->configureMandatoryCharge($application, $application->membership_type_id);
         $service = app(MembershipApplicationWorkflowService::class);
 
         $service->transition($application, MembershipApplicationStatus::VERIFIED, $actor);
         $service->transition($application->refresh(), MembershipApplicationStatus::REVIEWED, $actor);
         $service->transition($application->refresh(), MembershipApplicationStatus::APPROVED, $actor);
-        $service->transition($application->refresh(), MembershipApplicationStatus::PAYMENT, $actor);
+        $service->transition($application->refresh(), MembershipApplicationStatus::PENDING_PAYMENT, $actor);
 
-        $this->assertSame(MembershipApplicationStatus::PAYMENT, $application->refresh()->status);
+        $this->assertSame(MembershipApplicationStatus::PENDING_PAYMENT, $application->refresh()->status);
         $this->assertDatabaseCount('membership_application_status_histories', 4);
     }
 
     public function test_rejection_requires_reason_and_can_allow_reapplication(): void
     {
         [$application, $actor] = $this->applicationContext();
+        $this->configureMandatoryCharge($application, $application->membership_type_id);
         $service = app(MembershipApplicationWorkflowService::class);
 
         $this->expectException(ValidationException::class);
@@ -63,16 +67,20 @@ class MembershipApplicationWorkflowTest extends TestCase
     public function test_confirmation_creates_member_and_active_membership(): void
     {
         [$application, $actor] = $this->applicationContext();
+        $this->configureMandatoryCharge($application, $application->membership_type_id);
         $service = app(MembershipApplicationWorkflowService::class);
 
         foreach ([
             MembershipApplicationStatus::VERIFIED,
             MembershipApplicationStatus::REVIEWED,
             MembershipApplicationStatus::APPROVED,
-            MembershipApplicationStatus::PAYMENT,
+            MembershipApplicationStatus::PENDING_PAYMENT,
         ] as $status) {
             $service->transition($application->refresh(), $status, $actor);
         }
+
+        app(\Modules\Member\Services\MemberPaymentService::class)
+            ->markApplicationPaid($application->refresh(), $actor, 'organization', $application->organization_id);
 
         $confirmed = $service->confirm(
             application: $application->refresh(),
@@ -90,6 +98,27 @@ class MembershipApplicationWorkflowTest extends TestCase
             'member_id' => $member->id,
             'status' => MembershipStatus::ACTIVE->value,
         ]);
+    }
+
+    private function configureMandatoryCharge(MembershipApplication $application, int $membershipTypeId): void
+    {
+        $definition = MemberPaymentItem::create([
+            'organization_id' => $application->organization_id,
+            'membership_type_id' => $membershipTypeId,
+            'title' => 'Registration Fee',
+            'slug' => 'registration-' . uniqid(),
+            'is_recurring' => false,
+            'is_mandatory' => true,
+            'is_active' => true,
+            'metadata' => [],
+        ]);
+        $rate = MemberPaymentItemRate::create([
+            'member_payment_item_id' => $definition->id,
+            'amount' => 1000,
+            'currency' => 'INR',
+            'effective_from' => '2026-01-01',
+        ]);
+        $rate->allocations()->create(['scope_type' => 'organization', 'percentage' => 100]);
     }
 
     private function applicationContext(): array

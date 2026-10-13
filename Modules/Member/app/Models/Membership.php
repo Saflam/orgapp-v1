@@ -4,6 +4,7 @@ namespace Modules\Member\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Member\Enums\MembershipStatus;
 
 class Membership extends Model
@@ -30,6 +31,11 @@ class Membership extends Model
     public function member(): BelongsTo
     {
         return $this->belongsTo(Member::class);
+    }
+
+    public function paymentObligations(): HasMany
+    {
+        return $this->hasMany(MemberPaymentObligation::class);
     }
 
     public function membershipType(): BelongsTo

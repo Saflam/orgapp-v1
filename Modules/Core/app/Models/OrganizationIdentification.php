@@ -14,6 +14,8 @@ class OrganizationIdentification extends Model
         'is_required',
         'requires_document',
         'document_requirements',
+        'has_expiry',
+        'expiry_reminder_days',
     ];
 
     protected function casts(): array
@@ -23,6 +25,8 @@ class OrganizationIdentification extends Model
             'is_required' => 'boolean',
             'requires_document' => 'boolean',
             'document_requirements' => 'array',
+            'has_expiry' => 'boolean',
+            'expiry_reminder_days' => 'array',
         ];
     }
 

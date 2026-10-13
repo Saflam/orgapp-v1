@@ -30,6 +30,13 @@ class Member extends Model
         'metadata',
     ];
 
+    protected static function booted(): void
+    {
+        static::created(function (Member $member): void {
+            app(\Modules\Member\Services\MemberUnitHistoryService::class)->ensureInitial($member);
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -51,6 +58,33 @@ class Member extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class);
+    }
+
+    public function changes(): HasMany
+    {
+        return $this->hasMany(MemberChange::class)->latest('id');
+    }
+
+    public function unitHistories(): HasMany
+    {
+        return $this->hasMany(MemberUnitHistory::class)->orderBy('started_at');
+    }
+
+    public function unitAt(\DateTimeInterface|string $at): ?Unit
+    {
+        return $this->unitHistories()
+            ->where('started_at', '<=', $at)
+            ->where(function ($query) use ($at): void {
+                $query->whereNull('ended_at')
+                    ->orWhere('ended_at', '>', $at);
+            })
+            ->with('unit')
+            ->first()?->unit;
+    }
+
+    public function paymentObligations(): HasMany
+    {
+        return $this->hasMany(MemberPaymentObligation::class);
     }
 
     public function memberships(): HasMany

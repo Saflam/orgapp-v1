@@ -3,6 +3,8 @@
 namespace Modules\Member\Services;
 
 use App\Models\OrganizationMembership;
+use App\Models\UserAddress;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Unit;
@@ -50,6 +52,8 @@ class MemberService
                 )
             );
 
+            app(MemberUnitHistoryService::class)->ensureInitial($member);
+
             $userDetailData = array_intersect_key(
                 $data,
                 array_flip([
@@ -84,8 +88,10 @@ class MemberService
     public function update(
         Member $member,
         array $data,
+        ?User $actor = null,
     ): Member {
-        return DB::transaction(function () use ($member, $data) {
+        return DB::transaction(function () use ($member, $data, $actor) {
+            $before = $this->snapshot($member);
             $organizationId = $member->organization_id;
 
             if (array_key_exists('unit_id', $data)) {
@@ -106,6 +112,19 @@ class MemberService
                 );
             }
 
+            $userData = array_intersect_key(
+                $data,
+                array_flip([
+                    'name',
+                    'email',
+                    'phone',
+                ])
+            );
+
+            if ($userData !== []) {
+                $member->user->update($userData);
+            }
+
             $memberData = array_intersect_key(
                 $data,
                 array_flip([
@@ -115,6 +134,26 @@ class MemberService
                     'metadata',
                 ])
             );
+
+            $unitChanged = array_key_exists('unit_id', $memberData)
+                && $memberData['unit_id'] !== $member->unit_id;
+
+            if ($unitChanged) {
+                $member = Member::query()
+                    ->whereKey($member->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($memberData['unit_id'] !== $member->unit_id) {
+                    app(MemberUnitHistoryService::class)->changeUnit(
+                        member: $member,
+                        newUnitId: $memberData['unit_id'],
+                        actorUserId: $actor?->id,
+                        source: 'manual',
+                        reason: $data['reason'] ?? null,
+                    );
+                }
+            }
 
             if ($memberData !== []) {
                 $member->update($memberData);
@@ -144,11 +183,50 @@ class MemberService
                 );
             }
 
+            if (isset($data['address']) && is_array($data['address'])) {
+                $address = $data['address'];
+                $addressType = $address['address_type'] ?? 'home';
+                unset($address['address_type']);
+                $address['user_id'] = $member->user_id;
+                UserAddress::query()->updateOrCreate(
+                    ['user_id' => $member->user_id, 'address_type' => $addressType],
+                    $address,
+                );
+            }
+
+            $member->refresh()->load(['user.details', 'unit']);
+
+            if ($actor !== null) {
+                $member->changes()->create([
+                    'actor_user_id' => $actor->id,
+                    'reason' => $data['reason'] ?? null,
+                    'before_data' => $before,
+                    'after_data' => $this->snapshot($member),
+                ]);
+            }
+
             return $member->refresh()->load([
                 'user.details',
                 'unit',
             ]);
         });
+    }
+
+    private function snapshot(Member $member): array
+    {
+        $member->loadMissing(['user.details', 'unit']);
+
+        return [
+            'member' => $member->only([
+                'id', 'organization_id', 'user_id', 'unit_id',
+                'membership_number', 'joined_at', 'metadata',
+            ]),
+            'user' => $member->user?->only(['id', 'name', 'email', 'phone']),
+            'details' => $member->user?->details?->toArray(),
+            'addresses' => class_exists(UserAddress::class)
+                ? UserAddress::query()->where('user_id', $member->user_id)->get()->toArray()
+                : [],
+        ];
     }
 
     private function ensureUserBelongsToOrganization(

@@ -3,7 +3,7 @@
     "alias": "member",
     "description": "Saflivo member and membership domain.",
     "keywords": ["Saflivo", "member", "membership"],
-    "priority": 0,
+    "priority": 10,
     "providers": [
         "Modules\\Member\\Providers\\MemberServiceProvider"
     ],

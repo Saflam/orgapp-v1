@@ -93,7 +93,8 @@ class OrganizationModuleService
     /**
      * @return array<int, array{
      *     module: string,
-     *     is_enabled: bool
+     *     is_enabled: bool,
+     *     is_required: bool
      * }>
      */
     public function statuses(
@@ -107,6 +108,7 @@ class OrganizationModuleService
                         $organization,
                         $module,
                     ),
+                    'is_required' => $this->isRequired($module),
                 ];
             })
             ->values()
