@@ -1,0 +1,8 @@
+$kind: collection
+description: Corrected to match Modules/Core/routes/api.php. API prefix is /api/v1. OTP request requires an existing user; no registration endpoint is currently listed. Do not use this collection to bypass authentication.
+variables:
+  baseUrl: http://127.0.0.1:8000
+  email: ""
+  challengeId: ""
+  otpCode: ""
+  token: ""

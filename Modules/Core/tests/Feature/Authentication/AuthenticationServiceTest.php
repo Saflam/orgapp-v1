@@ -47,6 +47,8 @@ class AuthenticationServiceTest extends TestCase
             new AnonymousNotifiable,
             OtpNotification::class
         );
+
+        Notification::assertCount(1);
     }
 
     public function test_it_rejects_unknown_email(): void

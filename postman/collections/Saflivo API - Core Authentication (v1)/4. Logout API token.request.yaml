@@ -1,0 +1,8 @@
+$kind: http-request
+description: Matches the auth:sanctum route POST /api/v1/auth/logout. Invalidates the API token; this is not the browser-session logout flow.
+url: "{{baseUrl}}/api/v1/auth/logout"
+method: POST
+headers:
+  Accept: application/json
+  Authorization: Bearer {{token}}
+order: 4000

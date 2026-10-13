@@ -13,7 +13,6 @@ class AuthenticationService
 {
     public function __construct(
         protected OtpService $otpService,
-        protected EmailOtpChannel $emailOtpChannel,
         protected LoginActivityService $loginActivityService,
     ) {
     }
@@ -35,11 +34,6 @@ class AuthenticationService
             $user->email,
         );
 
-        $this->emailOtpChannel->send(
-            $user,
-            $result['challenge'],
-            $result['code'],
-        );
 
         return [
             'challenge' => $result['challenge'],

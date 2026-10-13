@@ -1,0 +1,15 @@
+# Use this workspace to collaborate
+workspace:
+  id: e3f8f85a-2910-4d32-81ce-dbb37b0f0025
+
+# Each entry here maps a local resource to one or more corresponding objects in Postman Cloud
+
+cloudResources:
+  collections:
+    ../postman/collections/Saflivo API - Core Authentication (v1): 1dce8fa8-4a6e-4374-84c1-0ab3251add8c
+
+# All resources in the `postman/` folder are automatically registered in Local View.
+# Point to additional files outside the `postman/` folder to register them individually. Example:
+#localResources:
+#  collections:
+#    - ../tests/E2E Test Collection/
