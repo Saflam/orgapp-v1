@@ -3,6 +3,7 @@
 namespace Modules\Member\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Member\Rules\ValidPhoneNumber;
 
 class UpdateMemberRequest extends FormRequest
 {
@@ -24,8 +25,8 @@ class UpdateMemberRequest extends FormRequest
             'date_of_birth' => ['sometimes', 'nullable', 'date'],
             'gender' => ['sometimes', 'nullable', 'string', 'max:50'],
             'blood_group' => ['sometimes', 'required', 'string', 'max:20'],
-            'whatsapp' => ['sometimes', 'nullable', 'string', 'max:50'],
-            'whatsapp_calling_code' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'whatsapp' => ['sometimes', 'nullable', 'string', 'max:50', new ValidPhoneNumber($this->input('whatsapp_calling_code'))],
+            'whatsapp_calling_code' => ['sometimes', 'nullable', 'string', 'max:10', 'regex:/^\+?[1-9]\d{0,2}$/'],
             'home_contact' => ['sometimes', 'nullable', 'string', 'max:50'],
             'profession' => ['sometimes', 'nullable', 'string', 'max:255'],
             'company' => ['sometimes', 'nullable', 'string', 'max:255'],

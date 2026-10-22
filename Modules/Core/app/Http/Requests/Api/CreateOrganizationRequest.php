@@ -26,6 +26,13 @@ class CreateOrganizationRequest extends FormRequest
                 'max:50',
             ],
 
+            'organization.membership_prefix' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'regex:/^[A-Za-z]{2}$/',
+            ],
+
             'organization.timezone' => [
                 'sometimes',
                 'string',
@@ -37,6 +44,9 @@ class CreateOrganizationRequest extends FormRequest
                 'string',
                 'size:3',
             ],
+
+            'modules' => ['sometimes', 'array'],
+            'modules.*' => ['string', 'max:100'],
 
             'notification_channels' => [
                 'sometimes',

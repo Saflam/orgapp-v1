@@ -6,9 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Cviebrock\EloquentSluggable\Sluggable;
 
 class Role extends Model
 {
+    use Sluggable;
+
     protected $fillable = [
         'organization_id',
         'name',
@@ -16,6 +19,24 @@ class Role extends Model
         'description',
         'is_system',
     ];
+
+    public function sluggable(): array
+    {
+        // Preserve explicit role codes supplied by role providers and existing roles.
+        // Slugs are generated only for new custom roles whose code is still empty.
+        if ($this->is_system || filled($this->code)) {
+            return [];
+        }
+
+        return [
+            'code' => [
+                'source' => 'name',
+                'separator' => '_',
+                'unique' => true,
+                'onUpdate' => true,
+            ],
+        ];
+    }
 
     protected function casts(): array
     {

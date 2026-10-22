@@ -3,15 +3,19 @@
 namespace Modules\Member\Services;
 
 use App\Models\User;
+use App\Support\PhoneNumbers\PhoneNumberNormalizer;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Enums\MemberPaymentObligationStatus;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationApproved;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationReviewed;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationRejected;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationVerified;
 use Modules\Member\Events\MembershipApplication\MembershipConfirmed;
 use Modules\Member\Events\MembershipApplication\MembershipPaymentRequired;
+use Modules\Member\Models\Member;
 use Modules\Member\Models\MembershipApplication;
 
 class MembershipApplicationWorkflowService
@@ -20,6 +24,7 @@ class MembershipApplicationWorkflowService
         private MemberRegistrationService $registrationService,
         private MembershipLifecycleService $membershipLifecycleService,
         private MemberPaymentService $paymentObligationService,
+        private MembershipNumberService $membershipNumberService,
     ) {
     }
 
@@ -30,22 +35,35 @@ class MembershipApplicationWorkflowService
         ?string $notes = null,
         bool $allowReapply = false,
     ): MembershipApplication {
-        $from = $application->status;
-
-        if (! $this->isAllowed($from, $to)) {
-            throw ValidationException::withMessages([
-                'status' => "The application cannot transition from [{$from->value}] to [{$to->value}].",
-            ]);
-        }
-
         return DB::transaction(function () use (
             $application,
-            $from,
             $to,
             $actor,
             $notes,
             $allowReapply,
         ): MembershipApplication {
+            $application = MembershipApplication::query()
+                ->whereKey($application->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $from = $application->status;
+
+            if (
+                $to === MembershipApplicationStatus::APPROVED
+                && $application->membership_type_id === null
+            ) {
+                throw ValidationException::withMessages([
+                    'membership_type_id' => 'Assign a membership type before approving this application.',
+                ]);
+            }
+
+            if (! $this->isAllowed($from, $to)) {
+                throw ValidationException::withMessages([
+                    'status' => "The application cannot transition from [{$from->value}] to [{$to->value}].",
+                ]);
+            }
+
             $application->update([
                 'status' => $to,
             ]);
@@ -62,16 +80,23 @@ class MembershipApplicationWorkflowService
             ]);
 
             if ($to === MembershipApplicationStatus::PENDING_PAYMENT) {
-                $this->paymentObligationService->createApplicationObligations($application);
+                $this->paymentObligationService
+                    ->createApplicationObligations($application);
             }
 
-            $application = $application->refresh();
+            $application->refresh();
 
             $event = match ($to) {
-                MembershipApplicationStatus::VERIFIED => new MembershipApplicationVerified($application),
-                MembershipApplicationStatus::REVIEWED => new MembershipApplicationReviewed($application),
-                MembershipApplicationStatus::APPROVED => new MembershipApplicationApproved($application),
-                MembershipApplicationStatus::PENDING_PAYMENT => new MembershipPaymentRequired($application),
+                MembershipApplicationStatus::VERIFIED =>
+                    new MembershipApplicationVerified($application),
+                MembershipApplicationStatus::REVIEWED =>
+                    new MembershipApplicationReviewed($application),
+                MembershipApplicationStatus::APPROVED =>
+                    new MembershipApplicationApproved($application),
+                MembershipApplicationStatus::PENDING_PAYMENT =>
+                    new MembershipPaymentRequired($application),
+                MembershipApplicationStatus::REJECTED =>
+                    new MembershipApplicationRejected($application),
                 default => null,
             };
 
@@ -84,6 +109,7 @@ class MembershipApplicationWorkflowService
             return $application;
         });
     }
+
 
     public function reject(
         MembershipApplication $application,
@@ -109,7 +135,7 @@ class MembershipApplicationWorkflowService
     public function confirm(
         MembershipApplication $application,
         User $actor,
-        string $membershipNumber,
+        ?string $membershipNumber,
         string $startsAt,
     ): MembershipApplication {
         return DB::transaction(function () use (
@@ -132,13 +158,65 @@ class MembershipApplicationWorkflowService
                 ]);
             }
 
+            if ($application->membership_type_id === null) {
+                throw ValidationException::withMessages([
+                    'membership_type_id' => 'A staff member must assign a membership type before confirming this application.',
+                ]);
+            }
+
             // Check payment state inside the same transaction as confirmation
             // so a concurrent confirmation/payment update cannot slip between
             // validation and member creation.
             $this->paymentObligationService->ensureApplicationFullyPaid($application);
 
+            $organization = \Modules\Core\Models\Organization::query()->findOrFail($application->organization_id);
+            $membershipNumber = trim((string) $membershipNumber);
+            if ($membershipNumber === '') {
+                $membershipNumber = $this->membershipNumberService->allocate($organization);
+            } else {
+                $this->membershipNumberService->observeManualNumber($organization, $membershipNumber);
+            }
+
             $data = $application->data ?? [];
             $memberData = $data['member'] ?? [];
+
+            $organizationMembership = \App\Models\OrganizationMembership::query()
+                ->where('organization_id', $application->organization_id)
+                ->where('user_id', $application->user_id)
+                ->lockForUpdate()
+                ->first();
+            if ($organizationMembership !== null && $organizationMembership->status === 'pending'
+                && data_get($organizationMembership->metadata, 'source') === 'spouse_membership_application') {
+                $organizationMembership->update(['status' => 'active']);
+            }
+
+            if (! empty($memberData['primary_phone'])) {
+                $normalizedPrimary = app(PhoneNumberNormalizer::class)->normalize(
+                    (string) $memberData['primary_phone'],
+                    $memberData['primary_phone_country_iso2'] ?? null,
+                );
+                $phoneOwner = User::query()->where('phone', $normalizedPrimary['phone_e164'])->whereKeyNot($application->user_id)->exists();
+                if ($phoneOwner) {
+                    throw ValidationException::withMessages(['primary_phone' => 'This phone number is already linked to another account.']);
+                }
+                try {
+                    User::query()->whereKey($application->user_id)->update([
+                        'phone' => $normalizedPrimary['phone_e164'],
+                        'phone_verified_at' => null,
+                    ]);
+                } catch (QueryException $exception) {
+                    // The users.phone unique index is the final protection
+                    // against two concurrent confirmations claiming the same
+                    // number. Convert that race into a validation response.
+                    if (! $this->isPhoneUniqueConstraintViolation($exception)) {
+                        throw $exception;
+                    }
+
+                    throw ValidationException::withMessages([
+                        'primary_phone' => 'This phone number is already linked to another account.',
+                    ]);
+                }
+            }
 
             $member = $this->registrationService->register(
                 memberData: [
@@ -156,6 +234,7 @@ class MembershipApplicationWorkflowService
                     'home_contact' => $memberData['home_contact'] ?? null,
                     'profession' => $memberData['profession'] ?? null,
                     'company' => $memberData['company'] ?? null,
+                    'company_address' => $memberData['company_address'] ?? null,
                     'unit_id' => $memberData['unit_id'] ?? null,
                     'joined_at' => $startsAt,
                     'metadata' => $memberData['metadata'] ?? [],
@@ -163,9 +242,43 @@ class MembershipApplicationWorkflowService
                 membershipTypeId: $application->membership_type_id,
                 startsAt: $startsAt,
                 extensionData: $data['extension_data'] ?? [],
-                addressData: $data['address'] ?? [],
+                addressData: $data['addresses'] ?? ($data['address'] ?? []),
                 identificationData: [],
+                phoneNumbers: $memberData['phone_numbers'] ?? [],
+                emergencyContacts: $memberData['emergency_contacts'] ?? [],
             );
+
+            $this->linkSpouseRelationships($application, $member);
+
+            // Media storage is not part of the database transaction. Copy the
+            // photo only after the membership transaction commits so a later
+            // database failure cannot leave a copied file/media record behind.
+            $profilePhoto = $application->getFirstMedia('profile-photo');
+            if ($profilePhoto !== null) {
+                $targetUser = $member->user;
+                $applicationId = $application->id;
+                $memberId = $member->id;
+
+                DB::afterCommit(function () use (
+                    $profilePhoto,
+                    $targetUser,
+                    $applicationId,
+                    $memberId,
+                ): void {
+                    try {
+                        $profilePhoto->copy($targetUser, 'profile-photo');
+                    } catch (\Throwable $exception) {
+                        \Illuminate\Support\Facades\Log::warning(
+                            'Unable to copy membership application profile photo after confirmation.',
+                            [
+                                'membership_application_id' => $applicationId,
+                                'member_id' => $memberId,
+                                'exception' => $exception->getMessage(),
+                            ],
+                        );
+                    }
+                });
+            }
 
             $this->registrationService->finalizeApplicationIdentifications(
                 application: $application,
@@ -216,6 +329,96 @@ class MembershipApplicationWorkflowService
 
             return $application;
         });
+    }
+
+    private function isPhoneUniqueConstraintViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'users_phone_unique')
+            || str_contains($message, 'users.phone')
+            || (
+                str_contains($message, 'phone')
+                && (
+                    str_contains($message, 'duplicate')
+                    || str_contains($message, 'unique constraint')
+                    || str_contains($message, 'unique violation')
+                )
+            );
+    }
+
+    private function linkSpouseRelationships(MembershipApplication $application, Member $member): void
+    {
+        $relatedMemberIds = [];
+        $selectedMemberId = data_get($application->data, 'spouse.member_id');
+        if ($selectedMemberId !== null) {
+            $relatedMemberIds[] = (int) $selectedMemberId;
+        }
+
+        $sourceApplicationId = data_get($application->data, 'member.metadata.spouse_of_application_id');
+        if ($sourceApplicationId !== null) {
+            $sourceApplication = MembershipApplication::query()
+                ->whereKey((int) $sourceApplicationId)
+                ->where('organization_id', $application->organization_id)
+                ->first();
+            if ($sourceApplication?->member_id !== null) {
+                $relatedMemberIds[] = (int) $sourceApplication->member_id;
+            }
+        }
+
+        // If the original applicant is confirmed after the spouse, find the spouse application by its source reference.
+        $spouseApplications = MembershipApplication::query()
+            ->where('organization_id', $application->organization_id)
+            ->whereNotNull('member_id')
+            ->where('data->member->metadata->spouse_of_application_id', $application->id)
+            ->get(['member_id']);
+        foreach ($spouseApplications as $spouseApplication) {
+            $relatedMemberIds[] = (int) $spouseApplication->member_id;
+        }
+
+        foreach (array_unique($relatedMemberIds) as $relatedMemberId) {
+            if ($relatedMemberId === (int) $member->id) {
+                continue;
+            }
+            $relatedMember = Member::query()
+                ->whereKey($relatedMemberId)
+                ->where('organization_id', $application->organization_id)
+                ->first();
+            if ($relatedMember === null) {
+                continue;
+            }
+
+            $this->ensureActiveSpouseRelationship($member->id, $relatedMember->id);
+            $this->ensureActiveSpouseRelationship($relatedMember->id, $member->id);
+        }
+    }
+
+    /**
+     * The relationship table has a unique key on member, related member, and
+     * type; ended_at is deliberately not part of that key. Reuse and reactivate
+     * an existing historical row instead of trying to insert a duplicate row.
+     */
+    private function ensureActiveSpouseRelationship(int $memberId, int $relatedMemberId): void
+    {
+        $relationship = \Modules\Member\Models\MemberRelationship::query()->firstOrCreate(
+            [
+                'member_id' => $memberId,
+                'related_member_id' => $relatedMemberId,
+                'relationship_type' => 'spouse',
+            ],
+            [
+                'started_at' => now()->toDateString(),
+                'ended_at' => null,
+                'metadata' => ['source' => 'membership_application'],
+            ],
+        );
+
+        if ($relationship->ended_at !== null) {
+            $relationship->started_at = now()->toDateString();
+            $relationship->ended_at = null;
+            $relationship->metadata = ['source' => 'membership_application'];
+            $relationship->save();
+        }
     }
 
     private function isAllowed(

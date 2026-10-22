@@ -9,6 +9,9 @@
     <meta name="description" content="@yield('description', 'A connected workspace for membership, events, and organization operations.')">
     @fonts
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @if (request()->routeIs('organization.membership.apply', 'organization.membership.apply.spouse'))
+        @vite('Modules/Member/resources/assets/js/membership-application.js')
+    @endif
     @stack('head')
 </head>
 <body class="min-h-screen bg-stone-50 font-sans text-slate-900 antialiased">

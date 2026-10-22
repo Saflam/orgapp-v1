@@ -19,6 +19,7 @@ class CoreRoleProvider implements RoleProvider
                 'code' => 'super_admin',
                 'description' => 'Full administrative access within the organization.',
                 'permissions' => [
+                    'organization.settings.manage',
                     'notification.channel.manage',
                 ],
             ],

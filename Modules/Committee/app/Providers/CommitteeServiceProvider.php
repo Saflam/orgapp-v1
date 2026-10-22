@@ -5,6 +5,7 @@ namespace Modules\Committee\Providers;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Core\Services\AuthorizationContributorRegistry;
+use Modules\Core\Services\PermissionRegistry;
 
 class CommitteeServiceProvider extends ModuleServiceProvider
 {
@@ -38,6 +39,13 @@ class CommitteeServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         parent::register();
+
+        $this->app->afterResolving(
+            PermissionRegistry::class,
+            function (PermissionRegistry $registry): void {
+                $registry->registerProvider(new CommitteePermissionProvider());
+            }
+        );
 
         $this->app->afterResolving(
             AuthorizationContributorRegistry::class,

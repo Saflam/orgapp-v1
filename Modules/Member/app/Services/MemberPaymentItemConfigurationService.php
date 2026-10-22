@@ -33,6 +33,7 @@ class MemberPaymentItemConfigurationService
                 'title'=>$data['title'],
                 'slug'=>$data['slug'],
                 'description'=>$data['description']??null,
+                'family_payment_policy'=>$data['family_payment_policy']??'individual',
                 'is_mandatory'=>$data['is_mandatory']??true,
                 'is_recurring'=>$data['is_recurring']??false,
                 'recurring_period'=>$data['recurring_period']??null,
@@ -44,6 +45,7 @@ class MemberPaymentItemConfigurationService
                 'metadata'=>$data['metadata']??[],
             ]);
             $this->createRate($item,$data['rate']);
+            app(MemberPaymentService::class)->refreshPendingApplicationInvoiceSnapshots($organization->id);
             return $item->load(['membershipType','rates.allocations']);
         });
     }
@@ -52,11 +54,12 @@ class MemberPaymentItemConfigurationService
     {
         $this->ensureOrganization($organization,$item);
         return DB::transaction(function() use($item,$data){
-            $merged=array_merge($item->only(['membership_type_id','title','description','is_mandatory','is_recurring','recurring_period','recurring_by','recurring_date','is_active','reminder_days_before_due','reminder_days_after_due','metadata']),$data);
+            $merged=array_merge($item->only(['membership_type_id','title','description','family_payment_policy','is_mandatory','is_recurring','recurring_period','recurring_by','recurring_date','is_active','reminder_days_before_due','reminder_days_after_due','metadata']),$data);
             $this->validateShape($merged);
             if(array_key_exists('membership_type_id',$data)) $this->validateMembershipType($item->organization,$data['membership_type_id']);
             if(array_key_exists('slug',$data) && $data['slug']!==$item->slug) $this->ensureSlugAvailable($item->organization,$data['membership_type_id']??$item->membership_type_id,$data['slug'],$item->id);
             $item->update($data);
+            app(MemberPaymentService::class)->refreshPendingApplicationInvoiceSnapshots($item->organization_id);
             return $item->refresh()->load(['membershipType','rates.allocations']);
         });
     }
@@ -72,6 +75,7 @@ class MemberPaymentItemConfigurationService
             if($previous) $previous->update(['effective_to'=>$from->copy()->subDay()->toDateString()]);
             $rate=$item->rates()->create(['amount'=>$data['amount'],'currency'=>strtoupper($data['currency']),'effective_from'=>$data['effective_from'],'effective_to'=>$data['effective_to']??null]);
             foreach($data['allocations'] as $allocation) $rate->allocations()->create(['scope_type'=>$allocation['scope_type'],'percentage'=>$allocation['percentage']]);
+            app(MemberPaymentService::class)->refreshPendingApplicationInvoiceSnapshots($item->organization_id);
             return $rate->load('allocations');
         });
     }
@@ -99,6 +103,9 @@ class MemberPaymentItemConfigurationService
 
     private function validateShape(array $data): void
     {
+        if (!in_array($data['family_payment_policy'] ?? 'individual', ['individual', 'mutual_spouse'], true)) {
+            throw ValidationException::withMessages(['family_payment_policy' => 'Choose a valid family payment policy.']);
+        }
         $recurring=(bool)($data['is_recurring']??false);
         $period=$data['recurring_period']??null;
         $by=$data['recurring_by']??null;

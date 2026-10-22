@@ -1,0 +1,25 @@
+Add the method below inside your EXISTING OrganizationModuleServiceTest class.
+Do not replace the existing PHP test file with a new file; your existing test file contains other tests.
+
+    public function test_it_cannot_disable_an_unknown_module(): void
+    {
+        $organization = Organization::factory()->create();
+        $service = app(OrganizationModuleService::class);
+
+        try {
+            $service->disable($organization, 'UnknownModule');
+            $this->fail('Expected disabling an unknown module to throw a ValidationException.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('module', $exception->errors());
+        }
+
+        $this->assertDatabaseMissing('organization_modules', [
+            'organization_id' => $organization->id,
+            'module' => 'UnknownModule',
+        ]);
+    }
+
+Make sure the existing file imports:
+use Illuminate\\Validation\\ValidationException;
+use Modules\\Core\\Models\\Organization;
+use Modules\\Core\\Services\\OrganizationModuleService;

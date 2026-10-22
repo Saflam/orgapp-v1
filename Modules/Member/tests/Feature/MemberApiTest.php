@@ -4,6 +4,8 @@ namespace Modules\Member\Tests\Feature;
 
 use App\Models\OrganizationMembership;
 use App\Models\User;
+use App\Models\UserEmergencyContact;
+use App\Models\UserPhoneNumber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
@@ -70,7 +72,76 @@ class MemberApiTest extends TestCase
             ->assertJsonPath('data.1.name', 'John Doe');
     }
 
-    public function test_a_member_can_be_shown(): void
+        public function test_numeric_membership_search_returns_matching_sequence_across_prefixes(): void
+    {
+        $organization = Organization::factory()->create();
+        $this->actAsMemberOrganizationAdmin($organization);
+
+        $numbers = ['SDA-0123', 'SDB-0123', 'SDC-0456', 'SDA-1234'];
+        foreach ($numbers as $index => $number) {
+            $user = User::factory()->create(['name' => 'Member ' . $index]);
+            OrganizationMembership::create([
+                'organization_id' => $organization->id,
+                'user_id' => $user->id,
+                'status' => 'active',
+            ]);
+            Member::create([
+                'organization_id' => $organization->id,
+                'user_id' => $user->id,
+                'membership_number' => $number,
+            ]);
+        }
+
+        $response = $this->getJson(
+            $this->organizationUrl(
+                $organization,
+                '/api/v1/organizations/' . $organization->id . '/members?search=123'
+            )
+        );
+
+        $response->assertOk()->assertJsonCount(2, 'data');
+        $foundNumbers = collect($response->json('data'))
+            ->pluck('membership_number')
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame(['SDA-0123', 'SDB-0123'], $foundNumbers);
+    }
+
+    public function test_full_prefixed_membership_search_matches_exact_number(): void
+    {
+        $organization = Organization::factory()->create();
+        $this->actAsMemberOrganizationAdmin($organization);
+
+        foreach (['SDA-0123', 'SDB-0123'] as $index => $number) {
+            $user = User::factory()->create(['name' => 'Member ' . $index]);
+            OrganizationMembership::create([
+                'organization_id' => $organization->id,
+                'user_id' => $user->id,
+                'status' => 'active',
+            ]);
+            Member::create([
+                'organization_id' => $organization->id,
+                'user_id' => $user->id,
+                'membership_number' => $number,
+            ]);
+        }
+
+        $response = $this->getJson(
+            $this->organizationUrl(
+                $organization,
+                '/api/v1/organizations/' . $organization->id . '/members?search=SDB-0123'
+            )
+        );
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.membership_number', 'SDB-0123');
+    }
+
+public function test_a_member_can_be_shown(): void
     {
         $organization = Organization::factory()->create();
 
@@ -779,6 +850,197 @@ class MemberApiTest extends TestCase
             'MEM-0001',
             $member->membership_number
         );
+    }
+
+    public function test_member_can_view_additional_phone_numbers_and_emergency_contacts_in_profile(): void
+    {
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+
+        $this->actAsMemberOrganizationAdmin($organization, $user);
+
+        Member::create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_number' => 'MEM-0002',
+        ]);
+
+        $phone = UserPhoneNumber::create([
+            'user_id' => $user->id,
+            'type' => 'whatsapp',
+            'label' => 'Personal WhatsApp',
+            'phone_e164' => '+919876543210',
+            'country_iso2' => 'IN',
+            'is_primary' => true,
+        ]);
+
+        $contact = UserEmergencyContact::create([
+            'user_id' => $user->id,
+            'contact_name' => 'Emergency Person',
+            'relationship' => 'Sibling',
+            'phone_e164' => '+971501234567',
+            'country_iso2' => 'AE',
+            'is_primary' => true,
+        ]);
+
+        $response = $this->getJson($this->organizationUrl(
+            $organization,
+            "/api/v1/organizations/{$organization->id}/members/me",
+        ));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.phone_numbers.0.id', $phone->id)
+            ->assertJsonPath('data.phone_numbers.0.type', 'whatsapp')
+            ->assertJsonPath('data.phone_numbers.0.country_iso2', 'IN')
+            ->assertJsonPath('data.phone_numbers.0.country_calling_code', '91')
+            ->assertJsonPath('data.phone_numbers.0.national_number', '9876543210')
+            ->assertJsonPath('data.emergency_contacts.0.id', $contact->id)
+            ->assertJsonPath('data.emergency_contacts.0.contact_name', 'Emergency Person')
+            ->assertJsonPath('data.emergency_contacts.0.country_iso2', 'AE')
+            ->assertJsonPath('data.emergency_contacts.0.country_calling_code', '971')
+            ->assertJsonPath('data.emergency_contacts.0.national_number', '501234567');
+    }
+
+    public function test_member_can_add_update_and_delete_own_profile_contact_records(): void
+    {
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+
+        $this->actAsMemberOrganizationAdmin($organization, $user);
+
+        Member::create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_number' => 'MEM-0003',
+        ]);
+
+        $existingPhone = UserPhoneNumber::create([
+            'user_id' => $user->id,
+            'type' => 'whatsapp',
+            'phone_e164' => '+919876543210',
+            'country_iso2' => 'IN',
+            'is_primary' => true,
+        ]);
+
+        $existingEmergency = UserEmergencyContact::create([
+            'user_id' => $user->id,
+            'contact_name' => 'Old Contact',
+            'relationship' => 'Sibling',
+            'phone_e164' => '+919876543210',
+            'country_iso2' => 'IN',
+        ]);
+
+        $response = $this->putJson($this->organizationUrl(
+            $organization,
+            "/api/v1/organizations/{$organization->id}/members/me",
+        ), [
+            'phone_numbers' => [
+                [
+                    'id' => $existingPhone->id,
+                    'type' => 'whatsapp',
+                    'phone' => '9876543211',
+                    'country_iso2' => 'IN',
+                    'is_primary' => true,
+                ],
+                [
+                    'type' => 'home',
+                    'phone' => '501234567',
+                    'country_iso2' => 'AE',
+                    'label' => 'Home',
+                ],
+            ],
+            'emergency_contacts' => [
+                [
+                    'id' => $existingEmergency->id,
+                    'contact_name' => 'Updated Contact',
+                    'relationship' => 'Parent',
+                    'phone' => '501234568',
+                    'country_iso2' => 'AE',
+                ],
+            ],
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.phone_numbers.0.phone_e164', '+919876543211')
+            ->assertJsonPath('data.phone_numbers.1.phone_e164', '+971501234567')
+            ->assertJsonPath('data.emergency_contacts.0.contact_name', 'Updated Contact')
+            ->assertJsonPath('data.emergency_contacts.0.phone_e164', '+971501234568');
+
+        $this->assertDatabaseHas('user_phone_numbers', [
+            'id' => $existingPhone->id,
+            'user_id' => $user->id,
+            'phone_e164' => '+919876543211',
+        ]);
+        $this->assertDatabaseHas('user_emergency_contacts', [
+            'id' => $existingEmergency->id,
+            'user_id' => $user->id,
+            'contact_name' => 'Updated Contact',
+            'phone_e164' => '+971501234568',
+        ]);
+
+        $deleteResponse = $this->putJson($this->organizationUrl(
+            $organization,
+            "/api/v1/organizations/{$organization->id}/members/me",
+        ), [
+            'phone_numbers' => [
+                ['id' => $existingPhone->id, '_delete' => true],
+            ],
+            'emergency_contacts' => [
+                ['id' => $existingEmergency->id, '_delete' => true],
+            ],
+        ]);
+
+        $deleteResponse->assertOk();
+        $this->assertDatabaseMissing('user_phone_numbers', ['id' => $existingPhone->id]);
+        $this->assertDatabaseMissing('user_emergency_contacts', ['id' => $existingEmergency->id]);
+        $this->assertDatabaseHas('user_phone_numbers', [
+            'user_id' => $user->id,
+            'type' => 'home',
+            'phone_e164' => '+971501234567',
+        ]);
+    }
+
+    public function test_member_cannot_update_another_users_phone_number_from_profile(): void
+    {
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+
+        $this->actAsMemberOrganizationAdmin($organization, $user);
+
+        Member::create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_number' => 'MEM-0004',
+        ]);
+
+        $otherPhone = UserPhoneNumber::create([
+            'user_id' => $otherUser->id,
+            'type' => 'whatsapp',
+            'phone_e164' => '+919876543210',
+            'country_iso2' => 'IN',
+        ]);
+
+        $response = $this->putJson($this->organizationUrl(
+            $organization,
+            "/api/v1/organizations/{$organization->id}/members/me",
+        ), [
+            'phone_numbers' => [[
+                'id' => $otherPhone->id,
+                'type' => 'whatsapp',
+                'phone' => '9876543211',
+                'country_iso2' => 'IN',
+            ]],
+        ]);
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseHas('user_phone_numbers', [
+            'id' => $otherPhone->id,
+            'user_id' => $otherUser->id,
+            'phone_e164' => '+919876543210',
+        ]);
     }
 
     public function test_member_profile_update_cannot_change_membership_fields(): void

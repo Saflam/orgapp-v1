@@ -15,7 +15,8 @@ class ConfirmMembershipApplicationRequest extends FormRequest
     {
         return [
             'membership_number' => [
-                'required',
+                'sometimes',
+                'nullable',
                 'string',
                 'max:255',
             ],

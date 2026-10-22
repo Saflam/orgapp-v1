@@ -52,6 +52,44 @@ class OrganizationServiceTest extends TestCase
         ]);
     }
 
+    public function test_it_initializes_membership_numbering_and_accepts_a_creation_time_prefix(): void
+    {
+        $organization = app(OrganizationService::class)->create([
+            'organization' => [
+                'name' => 'Saradhi',
+                'code' => 'SARADHI',
+                'slug' => 'saradhi',
+                'membership_prefix' => 'SD',
+            ],
+            'super_admin' => [
+                'name' => 'John Doe',
+                'email' => 'john-numbering@example.com',
+            ],
+        ]);
+
+        $this->assertSame('SD', $organization->settings['membership_numbering']['base_prefix']);
+        $this->assertSame('A', $organization->settings['membership_numbering']['series']);
+        $this->assertSame(1, $organization->settings['membership_numbering']['next_sequence']);
+        $this->assertArrayNotHasKey('membership_prefix', $organization->getAttributes());
+    }
+
+    public function test_it_suggests_a_prefix_when_one_is_not_supplied(): void
+    {
+        $organization = app(OrganizationService::class)->create([
+            'organization' => [
+                'name' => 'Kerala Cultural Association',
+                'code' => 'KCA',
+                'slug' => 'kerala-cultural-association',
+            ],
+            'super_admin' => [
+                'name' => 'John Doe',
+                'email' => 'john-default-prefix@example.com',
+            ],
+        ]);
+
+        $this->assertSame('KC', $organization->settings['membership_numbering']['base_prefix']);
+    }
+
     public function test_required_modules_are_enabled_by_default(): void
     {
         $service = app(OrganizationService::class);

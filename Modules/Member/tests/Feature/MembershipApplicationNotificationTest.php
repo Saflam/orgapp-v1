@@ -12,6 +12,7 @@ use Modules\Core\Services\NotificationChannelRegistry;
 use Modules\Core\Services\NotificationService;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationApproved;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationReviewed;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationRejected;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationSubmitted;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationVerified;
 use Modules\Member\Events\MembershipApplication\MembershipConfirmed;
@@ -59,15 +60,18 @@ class MembershipApplicationNotificationTest extends TestCase
         event(new MembershipApplicationApproved($application));
         event(new MembershipPaymentRequired($application));
         event(new MembershipConfirmed($application));
+        $application->update(['status' => MembershipApplicationStatus::REJECTED]);
+        event(new MembershipApplicationRejected($application));
 
-        $this->assertDatabaseCount('notifications', 6);
+        $this->assertDatabaseCount('notifications', 7);
         $this->assertDatabaseHas('notifications', ['event' => 'membership.application.submitted']);
         $this->assertDatabaseHas('notifications', ['event' => 'membership.application.verified']);
         $this->assertDatabaseHas('notifications', ['event' => 'membership.application.reviewed']);
         $this->assertDatabaseHas('notifications', ['event' => 'membership.application.approved']);
         $this->assertDatabaseHas('notifications', ['event' => 'membership.payment.required']);
         $this->assertDatabaseHas('notifications', ['event' => 'membership.confirmed']);
-        $this->assertDatabaseCount('notification_deliveries', 6);
+        $this->assertDatabaseHas('notifications', ['event' => 'membership.application.rejected']);
+        $this->assertDatabaseCount('notification_deliveries', 7);
     }
 }
 

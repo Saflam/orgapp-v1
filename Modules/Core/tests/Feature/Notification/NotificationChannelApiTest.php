@@ -30,8 +30,13 @@ class NotificationChannelApiTest extends TestCase
             [
                 'is_enabled' => true,
                 'credentials' => [
-                    'api_key' => 'secret',
-                    'sender' => 'ORG',
+                    'phone_number_id' => '123456789',
+                    'access_token' => 'meta-access-token',
+                    'template_name' => 'saflivo_notification',
+                    'template_language' => 'en_US',
+                    'otp_template_name' => 'saflivo_login_otp',
+                    'otp_template_language' => 'en_US',
+                    'api_version' => 'v23.0',
                 ],
             ],
         );
@@ -81,6 +86,8 @@ class NotificationChannelApiTest extends TestCase
             'starts_at' => now(),
         ]);
 
+        app(\Modules\Core\Services\NotificationService::class)->setChannelAllowed($organization, 'sms', true);
+
         $token = $user->createToken('test-token')->plainTextToken;
 
         $response = $this->withToken($token)->putJson(
@@ -95,6 +102,7 @@ class NotificationChannelApiTest extends TestCase
             ->assertOk()
             ->assertJson([
                 'channel' => 'sms',
+                'is_allowed' => true,
                 'is_enabled' => true,
                 'use_system_default' => false,
                 'has_credentials' => true,

@@ -2,6 +2,8 @@
 
 namespace Modules\Core\Models;
 
+use Cviebrock\EloquentSluggable\Sluggable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +14,36 @@ use Modules\Core\Database\Factories\UnitFactory;
 class Unit extends Model implements AuthorizationContext
 {
     use HasFactory;
+    use Sluggable;
+
+    /**
+     * Generate a stable, URL-friendly unit code from the unit name.
+     * Duplicate names are suffixed within the same organization.
+     */
+    public function sluggable(): array
+    {
+        return [
+            'code' => [
+                'source' => 'name',
+                'onUpdate' => false,
+                'unique' => true,
+                'maxLength' => 50,
+            ],
+        ];
+    }
+
+    /**
+     * Unit codes only need to be unique inside their organization.
+     */
+    public function scopeWithUniqueSlugConstraints(
+        Builder $query,
+        Model $model,
+        string $attribute,
+        array $config,
+        string $slug
+    ): Builder {
+        return $query->where('organization_id', $model->organization_id);
+    }
 
     protected static function newFactory(): UnitFactory
     {

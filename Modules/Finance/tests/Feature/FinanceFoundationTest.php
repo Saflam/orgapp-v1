@@ -19,6 +19,7 @@ use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceCustomer;
 use Modules\Finance\Models\FinanceItem;
 use Modules\Finance\Models\FinanceJournal;
+use Modules\Finance\Models\FinancePeriod;
 use Modules\Finance\Services\FinanceAccountProvisioningService;
 use Modules\Finance\Services\FinanceCustomerService;
 use Modules\Finance\Services\FinanceItemService;
@@ -522,18 +523,22 @@ class FinanceFoundationTest extends TestCase
         $period = app(FinancePeriodService::class)->create($organization, $scope, [
             'name' => 'FY 2026', 'code' => 'FY2026', 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31',
         ]);
-        $otherPeriod = app(FinancePeriodService::class)->create($organization, $otherScope, [
-            'name' => 'FY 2026', 'code' => 'FY2026', 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31',
-        ]);
         $cash = FinanceAccount::query()->where('finance_scope_id', $otherScope->id)->where('code', '1000')->firstOrFail();
         $income = FinanceAccount::query()->where('finance_scope_id', $otherScope->id)->where('code', '4000')->firstOrFail();
-        $journal = app(FinanceJournalService::class)->post($organization, $otherScope, $otherPeriod, [
-            'transaction_date' => '2026-10-08',
-            'lines' => [
-                ['finance_account_id' => $cash->id, 'debit' => '1000.00'],
-                ['finance_account_id' => $income->id, 'credit' => '1000.00'],
+        // Financial periods are organization-level only. The journal still uses
+        // the unit ledger scope, but references the organization's period.
+        $journal = app(FinanceJournalService::class)->post(
+            $organization,
+            $otherScope,
+            $period,
+            [
+                'transaction_date' => '2026-10-08',
+                'lines' => [
+                    ['finance_account_id' => $cash->id, 'debit' => '1000.00'],
+                    ['finance_account_id' => $income->id, 'credit' => '1000.00'],
+                ],
             ],
-        ]);
+        );
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('The journal does not belong to the finance scope.');
@@ -623,6 +628,49 @@ class FinanceFoundationTest extends TestCase
         $this->assertEquals(500.0, (float) $journal->lines->sum('credit'));
     }
 
+    public function test_unit_collected_membership_payment_uses_organization_period_and_unit_ledger(): void
+    {
+        $organization = Organization::factory()->create();
+        app(OrganizationModuleService::class)->enable($organization, 'Core');
+        app(OrganizationModuleService::class)->enable($organization, 'Finance');
+
+        $unit = Unit::factory()->create(['organization_id' => $organization->id]);
+        $scopes = app(FinanceScopeService::class);
+        $organizationScope = $scopes->organizationScope($organization);
+        $unitScope = $scopes->unitScope($organization, $unit);
+
+        $period = app(FinancePeriodService::class)->create($organization, $organizationScope, [
+            'name' => 'FY 2026',
+            'code' => 'FY2026',
+            'starts_on' => '2026-01-01',
+            'ends_on' => '2026-12-31',
+        ]);
+
+        $payment = MemberPayment::create([
+            'organization_id' => $organization->id,
+            'receipt_number' => 'MP-UNIT-PERIOD-001',
+            'total_amount' => 425,
+            'currency' => 'INR',
+            'payment_method' => 'cash',
+            'collector_scope_type' => 'unit',
+            'collector_scope_id' => $unit->id,
+            'received_at' => '2026-10-08 10:00:00',
+            'metadata' => [],
+        ]);
+
+        $receipt = app(MemberPaymentFinanceService::class)->handle($payment);
+
+        $this->assertNotNull($receipt);
+        $journal = FinanceJournal::query()
+            ->where('source_type', 'member_payment')
+            ->where('source_id', $payment->id)
+            ->firstOrFail();
+
+        $this->assertSame($unitScope->id, $journal->finance_scope_id);
+        $this->assertSame($period->id, $journal->finance_period_id);
+        $this->assertSame($organizationScope->id, $journal->period->finance_scope_id);
+    }
+
     public function test_membership_payment_finance_processing_is_idempotent(): void
     {
         $organization = Organization::factory()->create();
@@ -671,6 +719,56 @@ class FinanceFoundationTest extends TestCase
                 ->where('source_id', $payment->id)
                 ->count()
         );
+    }
+
+
+    public function test_financial_year_pattern_generates_a_draft_and_requires_explicit_opening(): void
+    {
+        $organization = Organization::factory()->create();
+        $scope = app(FinanceScopeService::class)->organizationScope($organization);
+        $service = app(FinancePeriodService::class);
+
+        $period = $service->generateDraft($organization, $scope, 2026, [
+            'start_month' => 4,
+            'start_day' => 1,
+            'end_month' => 3,
+            'end_day' => 31,
+        ]);
+
+        $this->assertSame('FY26-27', $period->code);
+        $this->assertSame('2026-04-01', $period->starts_on->toDateString());
+        $this->assertSame('2027-03-31', $period->ends_on->toDateString());
+        $this->assertSame(FinancePeriodStatus::DRAFT, $period->status);
+        $this->assertNull($service->forDate($scope, '2026-10-22'));
+
+        $opened = $service->open($period);
+
+        $this->assertSame(FinancePeriodStatus::OPEN, $opened->status);
+        $this->assertSame($period->id, $service->forDate($scope, '2026-10-22')?->id);
+    }
+
+    public function test_generated_financial_year_cannot_overlap_an_existing_period(): void
+    {
+        $organization = Organization::factory()->create();
+        $scope = app(FinanceScopeService::class)->organizationScope($organization);
+        $service = app(FinancePeriodService::class);
+
+        $service->create($organization, $scope, [
+            'name' => 'Existing period',
+            'code' => 'CUSTOM-2026',
+            'starts_on' => '2026-01-01',
+            'ends_on' => '2026-12-31',
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The financial period overlaps an existing period.');
+
+        $service->generateDraft($organization, $scope, 2026, [
+            'start_month' => 4,
+            'start_day' => 1,
+            'end_month' => 3,
+            'end_day' => 31,
+        ]);
     }
 
     public function test_membership_payment_finance_processing_requires_a_financial_period(): void

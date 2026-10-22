@@ -47,6 +47,7 @@ class CoreServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         parent::register();
+        $this->mergeConfigFrom(module_path($this->name, 'config/whatsapp.php'), 'core.whatsapp');
 
         $this->app->singleton(
             ModuleDependencyRegistry::class,

@@ -23,7 +23,7 @@ class MembershipApplicationService
     public function startOrResume(
         Organization $organization,
         int $userId,
-        int $membershipTypeId,
+        ?int $membershipTypeId,
     ): MembershipApplication {
         /*
          * Lock the active organization membership first. This serializes
@@ -38,17 +38,19 @@ class MembershipApplicationService
             $organizationMembership = OrganizationMembership::query()
                 ->where('organization_id', $organization->id)
                 ->where('user_id', $userId)
-                ->where('status', 'active')
                 ->lockForUpdate()
                 ->first();
 
-            if (! $organizationMembership) {
+            $isPendingSpouseApplicant = $organizationMembership?->status === 'pending'
+                && data_get($organizationMembership->metadata, 'source') === 'spouse_membership_application';
+
+            if (! $organizationMembership || ($organizationMembership->status !== 'active' && ! $isPendingSpouseApplicant)) {
                 throw ValidationException::withMessages([
                     'user_id' => 'The selected user does not have an active membership in the selected organization.',
                 ]);
             }
 
-            $membershipType = $this->membershipType(
+            $membershipType = $membershipTypeId === null ? null : $this->membershipType(
                 organization: $organization,
                 membershipTypeId: $membershipTypeId,
             );
@@ -75,7 +77,7 @@ class MembershipApplicationService
             ) {
                 $application->update([
                     'status' => MembershipApplicationStatus::DRAFT,
-                    'membership_type_id' => $membershipType->id,
+                    'membership_type_id' => $membershipType?->id,
                     'current_step' => 1,
                     'completed_steps' => [],
                     'data' => [],
@@ -104,7 +106,7 @@ class MembershipApplicationService
                 MembershipApplication::create([
                     'organization_id' => $organization->id,
                     'user_id' => $userId,
-                    'membership_type_id' => $membershipType->id,
+                    'membership_type_id' => $membershipType?->id,
                     'status' => MembershipApplicationStatus::DRAFT,
                     'current_step' => 1,
                     'completed_steps' => [],
@@ -135,7 +137,7 @@ class MembershipApplicationService
     public function submit(
         Organization $organization,
         User $user,
-        int $membershipTypeId,
+        ?int $membershipTypeId,
         array $data,
         array $identificationData = [],
         int $stepCount = 0,
@@ -148,7 +150,7 @@ class MembershipApplicationService
             $identificationData,
             $stepCount,
         ): MembershipApplication {
-            $membershipType = $this->membershipType(
+            $membershipType = $membershipTypeId === null ? null : $this->membershipType(
                 organization: $organization,
                 membershipTypeId: $membershipTypeId,
             );
@@ -177,7 +179,7 @@ class MembershipApplicationService
             }
 
             $application->update([
-                'membership_type_id' => $membershipType->id,
+                'membership_type_id' => $membershipType?->id,
                 'status' => MembershipApplicationStatus::SUBMITTED,
                 'current_step' => $stepCount > 0 ? $stepCount : $application->current_step,
                 'completed_steps' => $stepCount > 0
@@ -223,7 +225,7 @@ class MembershipApplicationService
 
     private function membershipType(
         Organization $organization,
-        int $membershipTypeId,
+        ?int $membershipTypeId,
     ): MembershipType {
         $membershipType = MembershipType::query()
             ->whereKey($membershipTypeId)
@@ -245,13 +247,14 @@ class MembershipApplicationService
         Organization $organization,
         int $userId,
     ): void {
-        $exists = OrganizationMembership::query()
+        $membership = OrganizationMembership::query()
             ->where('organization_id', $organization->id)
             ->where('user_id', $userId)
-            ->where('status', 'active')
-            ->exists();
+            ->first();
+        $isPendingSpouseApplicant = $membership?->status === 'pending'
+            && data_get($membership->metadata, 'source') === 'spouse_membership_application';
 
-        if (! $exists) {
+        if ($membership === null || ($membership->status !== 'active' && ! $isPendingSpouseApplicant)) {
             throw ValidationException::withMessages([
                 'user_id' => 'The selected user does not have an active membership in the selected organization.',
             ]);

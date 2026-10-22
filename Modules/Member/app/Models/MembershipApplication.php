@@ -45,6 +45,10 @@ class MembershipApplication extends Model implements AuthorizationContext, HasMe
     {
         $this->addMediaCollection('application-documents')
             ->useDisk(config('media-library.disk_name'));
+
+        $this->addMediaCollection('profile-photo')
+            ->singleFile()
+            ->useDisk(config('media-library.disk_name'));
     }
 
     public function organization(): BelongsTo
@@ -104,7 +108,7 @@ class MembershipApplication extends Model implements AuthorizationContext, HasMe
 
     public function unitId(): ?int
     {
-        $unitId = data_get($this->data, 'member.unit_id');
+        $unitId = data_get($this->data, 'member.preferred_unit_id') ?? data_get($this->data, 'member.unit_id');
 
         return $unitId === null ? null : (int) $unitId;
     }

@@ -59,6 +59,8 @@ class CreateOrganizationApiTest extends TestCase
                 'kerala-cultural-association',
             );
 
+        $response->assertJsonPath('organization.membership_prefix', 'KC');
+
         $this->assertDatabaseHas('organizations', [
             'name' => 'Kerala Cultural Association',
             'code' => 'KCA',

@@ -14,8 +14,10 @@ use Modules\Core\Models\Unit;
 use Modules\Core\Services\OrganizationIdentificationService;
 use Modules\Core\Services\OrganizationModuleService;
 use Modules\Core\Services\RoleAssignmentService;
+use Modules\Member\Enums\MemberPaymentObligationStatus;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Models\MembershipApplication;
+use Modules\Member\Models\MemberPaymentObligation;
 use Modules\Member\Models\MembershipType;
 use Modules\Member\Models\MemberPaymentItem;
 use Modules\Member\Models\MemberPaymentItemRate;
@@ -216,12 +218,38 @@ class MembershipApplicationApiTest extends TestCase
     {
         [$organization, $applicant, $membershipType] = $this->applicationContext();
 
+        $civilId = IdentificationType::create([
+            'code' => 'civil_id',
+            'name' => 'Civil ID',
+        ]);
+
+        app(OrganizationIdentificationService::class)->configure(
+            organization: $organization,
+            identificationType: $civilId,
+            isEnabled: true,
+            isRequired: true,
+            requiresDocument: true,
+            documentRequirements: ['front', 'back'],
+        );
+
         $this->postJson(
             $this->organizationUrl($organization, '/api/v1/membership-application'),
-            $this->validSubmission($applicant, $membershipType),
+            array_merge(
+                $this->validSubmission($applicant, $membershipType),
+                [
+                    'identifications' => ['civil_id' => 'CIV-REAPPLY-123'],
+                    'identification_documents' => [
+                        'civil_id' => [
+                            'front' => UploadedFile::fake()->create('front.pdf', 100, 'application/pdf'),
+                            'back' => UploadedFile::fake()->create('back.pdf', 100, 'application/pdf'),
+                        ],
+                    ],
+                ],
+            ),
         )->assertCreated();
 
         $application = MembershipApplication::query()->firstOrFail();
+        $this->assertCount(2, $application->getMedia('application-documents'));
 
         $response = $this->postJson(
             $this->organizationUrl(
@@ -243,9 +271,22 @@ class MembershipApplicationApiTest extends TestCase
 
         $this->assertTrue($application->latestRejectionAllowsReapply());
 
+        // Required identification fields and documents must be supplied again
+        // when the rejected application is resubmitted.
         $response = $this->postJson(
             $this->organizationUrl($organization, '/api/v1/membership-application'),
-            $this->validSubmission($applicant, $membershipType, 'Updated'),
+            array_merge(
+                $this->validSubmission($applicant, $membershipType, 'Updated'),
+                [
+                    'identifications' => ['civil_id' => 'CIV-REAPPLY-456'],
+                    'identification_documents' => [
+                        'civil_id' => [
+                            'front' => UploadedFile::fake()->create('reapply-front.pdf', 100, 'application/pdf'),
+                            'back' => UploadedFile::fake()->create('reapply-back.pdf', 100, 'application/pdf'),
+                        ],
+                    ],
+                ],
+            ),
         );
 
         $response
@@ -254,6 +295,16 @@ class MembershipApplicationApiTest extends TestCase
 
         $this->assertDatabaseCount('membership_applications', 1);
         $this->assertSame($application->id, MembershipApplication::query()->firstOrFail()->id);
+        $reappliedDocuments = $application->fresh()->getMedia('application-documents');
+        $this->assertCount(2, $reappliedDocuments);
+        $this->assertEqualsCanonicalizing(
+            ['reapply-front.pdf', 'reapply-back.pdf'],
+            $reappliedDocuments->pluck('file_name')->all(),
+        );
+        $this->assertSame(
+            'CIV-REAPPLY-456',
+            data_get($application->fresh()->data, 'identifications.civil_id.identification_number'),
+        );
         $this->assertDatabaseCount('membership_application_status_histories', 4);
         $this->assertDatabaseMissing('members', [
             'organization_id' => $organization->id,
@@ -387,6 +438,65 @@ class MembershipApplicationApiTest extends TestCase
             'status' => MembershipApplicationStatus::CONFIRMED->value,
             'member_id' => $member->id,
         ]);
+    }
+
+    public function test_confirmation_is_rejected_when_an_application_obligation_is_unpaid(): void
+    {
+        [$organization, $applicant, $membershipType] = $this->applicationContext();
+
+        $this->postJson(
+            $this->organizationUrl($organization, '/api/v1/membership-application'),
+            $this->validSubmission($applicant, $membershipType),
+        )->assertCreated();
+
+        $application = MembershipApplication::query()->firstOrFail();
+
+        $this->postJson(
+            $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/verify"),
+            ['decision' => 'accept'],
+        )->assertOk();
+
+        $this->postJson(
+            $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/review"),
+            ['decision' => 'accept'],
+        )->assertOk();
+
+        $this->postJson(
+            $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/approve"),
+            ['decision' => 'accept'],
+        )->assertOk();
+
+        $this->postJson(
+            $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/payment"),
+        )->assertOk()->assertJsonPath('status', 'pending_confirmation');
+
+        // Simulate an outstanding balance at the confirmation boundary.
+        $obligation = $application->paymentObligations()->firstOrFail();
+        $obligation->update([
+            'status' => MemberPaymentObligationStatus::PENDING,
+            'paid_amount' => 0,
+            'paid_at' => null,
+        ]);
+        $historyCountBeforeConfirmation = $application->statusHistories()->count();
+
+        $this->postJson(
+            $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/confirm"),
+            [
+                'membership_number' => 'MEM-UNPAID-01',
+                'starts_at' => '2026-10-05',
+            ],
+        )->assertUnprocessable()->assertJsonValidationErrors(['payment']);
+
+        $this->assertDatabaseCount('members', 0);
+        $this->assertDatabaseCount('memberships', 0);
+        $this->assertDatabaseCount('user_details', 0);
+        $this->assertDatabaseCount('user_addresses', 0);
+        $this->assertDatabaseHas('membership_applications', [
+            'id' => $application->id,
+            'status' => MembershipApplicationStatus::PENDING_CONFIRMATION->value,
+            'member_id' => null,
+        ]);
+        $this->assertSame($historyCountBeforeConfirmation, $application->statusHistories()->count());
     }
 
     public function test_confirmation_rolls_back_member_and_membership_when_activation_fails(): void
@@ -619,6 +729,42 @@ class MembershipApplicationApiTest extends TestCase
             ->assertJsonValidationErrors([
                 'extension_data.Saradhi.introducer_unit_id',
             ]);
+    }
+
+    public function test_application_edit_records_before_and_after_data_with_actor_and_reason(): void
+    {
+        [$organization, $applicant, $membershipType] = $this->applicationContext();
+
+        $this->postJson(
+            $this->organizationUrl($organization, '/api/v1/membership-application'),
+            $this->validSubmission($applicant, $membershipType),
+        )->assertCreated();
+
+        $application = MembershipApplication::query()->firstOrFail();
+        $actorId = auth()->id();
+        $before = $application->data;
+
+        $this->putJson(
+            $this->organizationUrl(
+                $organization,
+                "/api/v1/membership-applications/{$application->id}",
+            ),
+            [
+                'member' => ['first_name' => 'Reviewed'],
+                'reason' => 'Corrected name after document verification.',
+            ],
+        )->assertOk();
+
+        $change = $application->changes()->firstOrFail();
+
+        $this->assertSame($actorId, $change->actor_user_id);
+        $this->assertSame('Corrected name after document verification.', $change->reason);
+        $this->assertSame($before, $change->before_data);
+        $this->assertSame('John', data_get($change->before_data, 'member.first_name'));
+        $this->assertSame('Reviewed', data_get($change->after_data, 'member.first_name'));
+        $this->assertSame('Doe', data_get($change->after_data, 'member.last_name'));
+        $this->assertSame('Reviewed', data_get($application->fresh()->data, 'member.first_name'));
+        $this->assertDatabaseCount('membership_application_changes', 1);
     }
 
     public function test_unit_scoped_reviewer_cannot_move_application_to_another_unit(): void

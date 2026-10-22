@@ -2,6 +2,7 @@
 
 namespace Modules\Member\Services;
 
+use App\Services\UserContactPersistenceService;
 use Illuminate\Support\Facades\DB;
 use Modules\Member\Models\Member;
 
@@ -16,6 +17,8 @@ class MemberProfileService
             ->where('user_id', $userId)
             ->with([
                 'user.details',
+                'user.phoneNumbers',
+                'user.emergencyContacts',
                 'unit',
             ])
             ->firstOrFail();
@@ -51,8 +54,18 @@ class MemberProfileService
                 );
             }
 
+            if (array_key_exists('phone_numbers', $data) || array_key_exists('emergency_contacts', $data)) {
+                app(UserContactPersistenceService::class)->syncForProfile(
+                    user: $member->user,
+                    phoneNumbers: array_key_exists('phone_numbers', $data) ? $data['phone_numbers'] : null,
+                    emergencyContacts: array_key_exists('emergency_contacts', $data) ? $data['emergency_contacts'] : null,
+                );
+            }
+
             return $member->refresh()->load([
                 'user.details',
+                'user.phoneNumbers',
+                'user.emergencyContacts',
                 'unit',
             ]);
         });

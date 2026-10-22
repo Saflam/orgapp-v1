@@ -17,20 +17,9 @@
             <a class="transition hover:text-emerald-800" href="#workflows">What you can manage</a>
             <a class="transition hover:text-emerald-800" href="#principles">Our approach</a>
         </nav>
-        <div class="flex items-center gap-2 sm:gap-3">
-            @guest
-                <a href="{{ route('login') }}" class="inline-flex min-h-11 items-center justify-center rounded-full px-3 text-sm font-semibold text-slate-700 transition hover:bg-white/70 hover:text-emerald-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 sm:px-4">
-                    Sign in
-                </a>
-            @else
-                <span class="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 sm:px-4" aria-label="Signed in as {{ auth()->user()->email }}">
-                    Signed in
-                </span>
-            @endguest
-            <a href="#platform" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white/80 px-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-800 hover:text-emerald-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 sm:px-5">
-                Explore the platform
-            </a>
-        </div>
+        <a href="#platform" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white/80 px-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-800 hover:text-emerald-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 sm:px-5">
+            Explore the platform
+        </a>
     </header>
 
     <main id="home">

@@ -10,6 +10,9 @@ class OrganizationNotificationChannel extends Model
     protected $fillable = [
         'organization_id',
         'channel',
+        'is_allowed',
+        'utility_allowed',
+        'marketing_allowed',
         'is_enabled',
         'use_system_default',
         'credentials',
@@ -18,6 +21,9 @@ class OrganizationNotificationChannel extends Model
     protected function casts(): array
     {
         return [
+            'is_allowed' => 'boolean',
+            'utility_allowed' => 'boolean',
+            'marketing_allowed' => 'boolean',
             'is_enabled' => 'boolean',
             'use_system_default' => 'boolean',
             'credentials' => 'encrypted:array',

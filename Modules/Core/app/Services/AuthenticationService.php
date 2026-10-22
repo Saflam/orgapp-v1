@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\LoginActivity;
 use Modules\Core\Models\OtpChallenge;
+use Modules\Core\Models\Organization;
 
 class AuthenticationService
 {
@@ -17,7 +18,7 @@ class AuthenticationService
     ) {
     }
 
-    public function requestEmailOtp(string $email): array
+    public function requestEmailOtp(string $email, ?Organization $organization = null): array
     {
         $user = User::where('email', $email)->first();
 
@@ -32,6 +33,7 @@ class AuthenticationService
             'login',
             'email',
             $user->email,
+            $organization,
         );
 
 

@@ -291,15 +291,39 @@ class CommitteeMembershipService
 
     public function end(
         CommitteeMembership $membership,
+        ?Carbon $effectiveDate = null,
+        ?string $reason = null,
     ): CommitteeMembership {
+        $membership->loadMissing('committeeTerm');
+
         if ($membership->status !== CommitteeMembershipStatus::ACTIVE) {
             throw new \DomainException(
-                'Only an active committee membership can be ended.'
+                'Only an active committee assignment can be concluded.'
             );
+        }
+
+        $dateWasProvided = $effectiveDate !== null;
+        $effectiveDate ??= Carbon::today();
+        if (! $dateWasProvided && $membership->committeeTerm->end_date !== null && $effectiveDate->gt($membership->committeeTerm->end_date)) {
+            $effectiveDate = Carbon::parse($membership->committeeTerm->end_date);
+        }
+        $reason = trim((string) $reason);
+        if ($reason === '') {
+            $reason = 'Concluded through an administrative/API action; no reason supplied.';
+        }
+
+        if ($membership->start_date !== null && $effectiveDate->lt($membership->start_date)) {
+            throw new \DomainException('The effective date cannot be before the assignment start date.');
+        }
+
+        if ($membership->committeeTerm->end_date !== null && $effectiveDate->gt($membership->committeeTerm->end_date)) {
+            throw new \DomainException('The effective date cannot be after the committee term ends.');
         }
 
         $membership->update([
             'status' => CommitteeMembershipStatus::ENDED,
+            'end_date' => $effectiveDate->toDateString(),
+            'end_reason' => $reason,
         ]);
 
         return $membership->refresh();

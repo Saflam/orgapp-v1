@@ -355,6 +355,35 @@ class CommitteeMembershipServiceTest extends TestCase
         );
     }
 
+    public function test_concluding_membership_records_effective_date_and_reason(): void
+    {
+        $context = $this->createCommitteeContext();
+        $designation = Designation::create([
+            'organization_id' => $context['organization']->id,
+            'name' => 'Secretary',
+            'code' => 'SECRETARY',
+            'is_active' => true,
+        ]);
+        $member = Member::factory()->forOrganization($context['organization']->id)->create([
+            'membership_number' => 'TEST-HISTORY-001',
+        ]);
+        $membership = app(CommitteeMembershipService::class)->addMember(
+            term: $context['term'],
+            member: $member,
+            designation: $designation,
+        );
+
+        $ended = app(CommitteeMembershipService::class)->end(
+            membership: $membership,
+            effectiveDate: \Illuminate\Support\Carbon::parse('2026-10-15'),
+            reason: 'Resigned from the committee.',
+        );
+
+        $this->assertSame(CommitteeMembershipStatus::ENDED, $ended->status);
+        $this->assertSame('2026-10-15', $ended->end_date?->toDateString());
+        $this->assertSame('Resigned from the committee.', $ended->end_reason);
+    }
+
     public function test_active_membership_can_be_cancelled(): void
     {
         $context = $this->createCommitteeContext();

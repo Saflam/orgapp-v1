@@ -4,6 +4,7 @@ namespace Modules\Core\Services;
 
 use App\Models\User;
 use Modules\Core\Data\AuthorizationContext;
+use Modules\Core\Models\Permission;
 use Modules\Core\Models\RoleAssignment;
 
 class AuthorizationService
@@ -18,6 +19,12 @@ class AuthorizationService
         string $permissionCode,
         AuthorizationContext $context,
     ): bool {
+        // System administrators manage the platform and initial organization setup;
+        // they do not inherit permissions for day-to-day organization operations.
+        if ($user->is_system_admin) {
+            return false;
+        }
+
         $membership = $user->organizationMemberships()
             ->where('organization_id', $context->organizationId)
             ->where('status', 'active')
@@ -25,6 +32,25 @@ class AuthorizationService
 
         if ($membership === null) {
             return false;
+        }
+
+        // The organization Super Administrator has broad access to known permissions
+        // outside Finance. The assignment must be active and organization-scoped.
+        $isOrganizationSuperAdmin = RoleAssignment::query()
+            ->active()
+            ->where('organization_membership_id', $membership->id)
+            ->where('context_type', 'organization')
+            ->where('context_id', $context->organizationId)
+            ->whereHas('role', fn ($query) => $query
+                ->whereNull('organization_id')
+                ->where('code', 'super_admin')
+                ->where('is_system', true))
+            ->exists();
+
+        if ($isOrganizationSuperAdmin) {
+            return Permission::query()
+                ->where('code', $permissionCode)
+                ->exists();
         }
 
         $assignments = RoleAssignment::query()

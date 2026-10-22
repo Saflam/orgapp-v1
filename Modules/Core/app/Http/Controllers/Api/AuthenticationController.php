@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Core\Models\OtpChallenge;
 use Modules\Core\Services\AuthenticationService;
+use App\Support\Organization\OrganizationResolver;
 
 class AuthenticationController
 {
@@ -23,8 +24,10 @@ class AuthenticationController
             ],
         ]);
 
+        $organization = app(OrganizationResolver::class)->resolve($request->getHost());
         $result = $this->authenticationService->requestEmailOtp(
-            $validated['email']
+            $validated['email'],
+            $organization,
         );
 
         return response()->json([

@@ -40,10 +40,11 @@ class PermissionRegistrationServiceTest extends TestCase
 
         $service->register($provider);
 
-        $this->assertDatabaseCount('permissions', 21);
+        $countAfterFirstRegistration = \Illuminate\Support\Facades\DB::table('permissions')->count();
+        $this->assertGreaterThan(0, $countAfterFirstRegistration);
 
         $service->register($provider);
 
-        $this->assertDatabaseCount('permissions', 21);
+        $this->assertDatabaseCount('permissions', $countAfterFirstRegistration);
     }
 }

@@ -9,6 +9,8 @@ class FinancePermissionProvider implements PermissionProvider
     public function permissions(): array
     {
         return [
+            ['module' => 'finance', 'name' => 'View Financial Periods', 'code' => 'finance.period.view', 'description' => 'View organization-wide financial periods.'],
+            ['module' => 'finance', 'name' => 'Manage Financial Periods', 'code' => 'finance.period.manage', 'description' => 'Create, edit, and close organization-wide financial periods.'],
             ['module' => 'finance', 'name' => 'View Finance Accounts', 'code' => 'finance.account.view', 'description' => 'View chart of accounts within the authorized financial scope.'],
             ['module' => 'finance', 'name' => 'Manage Finance Accounts', 'code' => 'finance.account.manage', 'description' => 'Create and manage finance accounts within the authorized financial scope.'],
             ['module' => 'finance', 'name' => 'View Finance Items', 'code' => 'finance.item.view', 'description' => 'View finance items.'],

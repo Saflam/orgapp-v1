@@ -88,6 +88,11 @@ Route::middleware([
     });
 
     Route::middleware('permission:membership.application.confirm')->group(function () {
+        Route::get(
+            'membership-applications/{membershipApplication}/membership-number-suggestion',
+            [MembershipApplicationController::class, 'membershipNumberSuggestion']
+        )->name('membership-application.membership-number-suggestion');
+
         Route::post(
             'membership-applications/{membershipApplication}/confirm',
             [MembershipApplicationController::class, 'confirm']

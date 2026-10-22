@@ -6,7 +6,7 @@ workspace:
 
 cloudResources:
   collections:
-    ../postman/collections/Saflivo API - V!: ac9a160c-5c53-4a4a-b666-21b1ce60495b
+    ../postman/collections/Saflivo — Complete API Collection (Core, Member, Events): 9aebaa53-bc5f-4f03-bcf7-63d1165b39ae
 
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:

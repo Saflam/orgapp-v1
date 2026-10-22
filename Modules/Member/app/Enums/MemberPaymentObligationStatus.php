@@ -7,5 +7,6 @@ enum MemberPaymentObligationStatus: string
     case PARTIALLY_PAID = 'partially_paid';
     case PAID = 'paid';
     case WAIVED = 'waived';
+    case COVERED_BY_FAMILY = 'covered_by_family';
     case CANCELLED = 'cancelled';
 }

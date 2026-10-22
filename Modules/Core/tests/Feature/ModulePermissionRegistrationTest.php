@@ -17,27 +17,20 @@ class ModulePermissionRegistrationTest extends TestCase
 
         $providers = $registry->providers();
 
-        $this->assertCount(4, $providers);
+        $providerClasses = array_map(
+            static fn ($provider): string => $provider::class,
+            $providers
+        );
 
-        $this->assertSame(
+        $this->assertCount(5, $providerClasses);
+
+        $this->assertEqualsCanonicalizing([
             'Modules\\Core\\Providers\\CorePermissionProvider',
-            $providers[0]::class
-        );
-
-        $this->assertSame(
             'Modules\\Member\\Providers\\MemberPermissionProvider',
-            $providers[1]::class
-        );
-
-        $this->assertSame(
             'Modules\\Events\\Providers\\EventsPermissionProvider',
-            $providers[2]::class
-        );
-
-        $this->assertSame(
             'Modules\\Finance\\Providers\\FinancePermissionProvider',
-            $providers[3]::class
-        );
+            'Modules\\Committee\\Providers\\CommitteePermissionProvider',
+        ], $providerClasses);
     }
 
     public function test_member_module_permissions_can_be_registered(): void

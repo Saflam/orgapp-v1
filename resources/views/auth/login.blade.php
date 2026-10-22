@@ -33,7 +33,14 @@
                 <x-ui.field label="Email address" name="email" type="email" required autocomplete="email" placeholder="you@example.com" :error="$errors->first('email')" />
                 <x-ui.button type="submit" size="lg" class="w-full">Send sign-in code <span aria-hidden="true">→</span></x-ui.button>
             </form>
-            <p class="mt-6 text-center text-xs leading-5 text-slate-500">Your account access is checked by Saflivo. Organization access is still enforced separately.</p>
+            <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-4 text-center">
+                <p class="text-sm font-medium text-slate-700">Not registered?</p>
+                <a href="{{ route('organization.register') }}"
+                   class="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-emerald-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">
+                    Register here
+                </a>
+            </div>
+            <p class="mt-4 text-center text-xs leading-5 text-slate-500">Your Saflivo account is global. Access to each organization is checked separately.</p>
         </x-ui.card>
         <p class="mt-6 text-center text-sm text-slate-500"><a href="/" class="font-medium text-emerald-900 underline-offset-4 hover:underline">Return to Saflivo home</a></p>
     </main>

@@ -5,6 +5,7 @@ namespace Modules\Member\Providers;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationApproved;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationReviewed;
+use Modules\Member\Events\MembershipApplication\MembershipApplicationRejected;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationSubmitted;
 use Modules\Member\Events\MembershipApplication\MembershipApplicationVerified;
 use Modules\Member\Events\MembershipApplication\MembershipConfirmed;
@@ -26,6 +27,9 @@ class EventServiceProvider extends ServiceProvider
             SendMembershipApplicationNotification::class,
         ],
         MembershipApplicationReviewed::class => [
+            SendMembershipApplicationNotification::class,
+        ],
+        MembershipApplicationRejected::class => [
             SendMembershipApplicationNotification::class,
         ],
         MembershipApplicationApproved::class => [

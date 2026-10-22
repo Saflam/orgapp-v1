@@ -150,4 +150,57 @@ class MemberPaymentServiceTest extends TestCase
         $this->assertDatabaseCount('member_payment_obligations', 2);
     }
 
+    public function test_same_obligation_cannot_be_collected_twice(): void
+    {
+        [$organization, $member, $membershipType, $membership] =
+            $this->memberContext('2026-01-01');
+
+        $this->serviceItem(
+            $organization,
+            $membershipType,
+            'service-fee',
+            'Service Fee',
+            50,
+        );
+
+        $service = app(MemberPaymentService::class);
+        $obligation = $service
+            ->syncOutstandingObligations($membership, '2026-01-01')
+            ->firstOrFail();
+
+        $actor = User::factory()->create();
+
+        $firstPayment = $service->recordPayment(
+            [$obligation],
+            $actor,
+            'unit',
+            $member->unit_id,
+        );
+
+        $this->assertSame('50.00', $firstPayment->total_amount);
+
+        try {
+            $service->recordPayment(
+                [$obligation],
+                $actor,
+                'unit',
+                $member->unit_id,
+            );
+
+            $this->fail('A second collection for the same paid obligation should be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('member_payments', 1);
+        $this->assertDatabaseCount('member_payment_lines', 1);
+
+        $this->assertDatabaseHas('member_payment_obligations', [
+            'id' => $obligation->id,
+            'status' => MemberPaymentObligationStatus::PAID->value,
+            'paid_amount' => '50.00',
+        ]);
+    }
+
+
 }

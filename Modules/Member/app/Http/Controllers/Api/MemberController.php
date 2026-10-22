@@ -24,14 +24,50 @@ class MemberController extends Controller
     }
 
     public function index(
+        Request $request,
         Organization $organization,
     ): JsonResponse {
-        $members = Member::query()
+        $search = trim((string) $request->query('search', ''));
+
+        $query = Member::query()
             ->where('organization_id', $organization->id)
             ->with([
                 'user.details',
                 'unit',
-            ])
+            ]);
+
+        if ($search !== '') {
+            $query->where(function ($members) use ($search): void {
+                // A numeric-only search means the four-digit sequence, regardless
+                // of the membership-number prefix (e.g. SDA-0123 and SDB-0123).
+                if (preg_match('/^\d{1,4}$/', $search) === 1) {
+                    $sequence = str_pad($search, 4, '0', STR_PAD_LEFT);
+
+                    $members->where('membership_number', $search)
+                        ->orWhere('membership_number', $sequence)
+                        ->orWhere('membership_number', 'like', '%-' . $sequence);
+
+                    return;
+                }
+
+                // A complete prefixed number is matched exactly. Other search
+                // terms can match a member's name, email, phone, or number.
+                if (preg_match('/^[A-Za-z]+-\d{4}$/', $search) === 1) {
+                    $members->where('membership_number', $search);
+
+                    return;
+                }
+
+                $members->where('membership_number', 'like', '%' . $search . '%')
+                    ->orWhereHas('user', function ($user) use ($search): void {
+                        $user->where('name', 'like', '%' . $search . '%')
+                            ->orWhere('email', 'like', '%' . $search . '%')
+                            ->orWhere('phone', 'like', '%' . $search . '%');
+                    });
+            });
+        }
+
+        $members = $query
             ->orderBy('membership_number')
             ->get();
 

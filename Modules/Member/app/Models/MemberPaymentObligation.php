@@ -20,5 +20,5 @@ class MemberPaymentObligation extends Model
     public function discounts(): HasMany { return $this->hasMany(MemberPaymentObligationDiscount::class); }
     public function paymentLines(): HasMany { return $this->hasMany(MemberPaymentLine::class); }
     public function isPending(): bool { return in_array($this->status,[MemberPaymentObligationStatus::PENDING,MemberPaymentObligationStatus::PARTIALLY_PAID],true); }
-    public function isSettled(): bool { return in_array($this->status,[MemberPaymentObligationStatus::PAID,MemberPaymentObligationStatus::WAIVED,MemberPaymentObligationStatus::CANCELLED],true); }
+    public function isSettled(): bool { return in_array($this->status,[MemberPaymentObligationStatus::PAID,MemberPaymentObligationStatus::WAIVED,MemberPaymentObligationStatus::CANCELLED,MemberPaymentObligationStatus::COVERED_BY_FAMILY],true); }
 }

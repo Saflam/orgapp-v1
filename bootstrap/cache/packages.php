@@ -45,6 +45,17 @@
       0 => 'Linkxtr\\QrCode\\QrCodeServiceProvider',
     ),
   ),
+  'livewire/livewire' => 
+  array (
+    'aliases' => 
+    array (
+      'Livewire' => 'Livewire\\Livewire',
+    ),
+    'providers' => 
+    array (
+      0 => 'Livewire\\LivewireServiceProvider',
+    ),
+  ),
   'nesbot/carbon' => 
   array (
     'providers' => 

@@ -2,6 +2,7 @@
 
 namespace Modules\Member\Services;
 
+use App\Services\UserContactPersistenceService;
 use App\Models\UserAddress;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +32,8 @@ class MemberRegistrationService
         array $extensionData = [],
         array $addressData = [],
         array $identificationData = [],
+        array $phoneNumbers = [],
+        array $emergencyContacts = [],
     ): Member {
         return DB::transaction(function () use (
             $memberData,
@@ -39,6 +42,8 @@ class MemberRegistrationService
             $extensionData,
             $addressData,
             $identificationData,
+            $phoneNumbers,
+            $emergencyContacts,
         ) {
             $membershipType = MembershipType::query()->find(
                 $membershipTypeId
@@ -67,6 +72,12 @@ class MemberRegistrationService
 
             $member = $this->memberService->create($memberData);
 
+            app(UserContactPersistenceService::class)->persist(
+                user: $member->user,
+                phoneNumbers: $phoneNumbers,
+                emergencyContacts: $emergencyContacts,
+            );
+
             Membership::create([
                 'member_id' => $member->id,
                 'membership_type_id' => $membershipType->id,
@@ -77,10 +88,17 @@ class MemberRegistrationService
             ]);
 
             if ($addressData !== []) {
-                UserAddress::create([
-                    'user_id' => $member->user_id,
-                    ...$addressData,
-                ]);
+                $addressRows = array_is_list($addressData) ? $addressData : [$addressData];
+                foreach ($addressRows as $addressRow) {
+                    if (! is_array($addressRow) || empty($addressRow['address_line_1'])) {
+                        continue;
+                    }
+                    unset($addressRow['home_contact']);
+                    UserAddress::create([
+                        'user_id' => $member->user_id,
+                        ...$addressRow,
+                    ]);
+                }
             }
 
             /*

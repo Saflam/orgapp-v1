@@ -5,6 +5,7 @@ namespace Modules\Core\Services;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Modules\Core\Models\OtpChallenge;
+use Modules\Core\Models\Organization;
 
 class OtpService
 {
@@ -16,6 +17,7 @@ class OtpService
 
     public function __construct(
         private readonly EmailOtpChannel $emailChannel,
+        private readonly MetaWhatsAppOtpSender $whatsAppOtpSender,
     ) {
     }
 
@@ -24,6 +26,7 @@ class OtpService
         string $purpose,
         string $channel,
         string $destination,
+        ?Organization $organization = null,
     ): array {
         $code = $this->generateCode();
 
@@ -45,6 +48,11 @@ class OtpService
             $challenge,
             $code,
         );
+
+        // WhatsApp is an additional delivery path; a provider outage must not block email OTP.
+        if ($purpose === 'login' && $organization !== null) {
+            $this->whatsAppOtpSender->send($user, $challenge, $code, $organization);
+        }
 
         return [
             'challenge' => $challenge,

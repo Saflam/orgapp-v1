@@ -68,12 +68,12 @@ class OrganizationModuleDependencyTest extends TestCase
 
         $service = app(OrganizationModuleService::class);
 
-        $this->expectException(ValidationException::class);
-
-        $service->enable(
-            $organization,
-            'Saradhi'
-        );
+        try {
+            $service->enable($organization, 'Saradhi');
+            $this->fail('Expected enabling Saradhi without Member to throw a ValidationException.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('module', $exception->errors());
+        }
 
         $this->assertDatabaseMissing('organization_modules', [
             'organization_id' => $organization->id,
@@ -98,12 +98,12 @@ class OrganizationModuleDependencyTest extends TestCase
             'Saradhi'
         );
 
-        $this->expectException(ValidationException::class);
-
-        $service->disable(
-            $organization,
-            'Member'
-        );
+        try {
+            $service->disable($organization, 'Member');
+            $this->fail('Expected disabling Member while Saradhi is enabled to throw a ValidationException.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('module', $exception->errors());
+        }
 
         $this->assertDatabaseHas('organization_modules', [
             'organization_id' => $organization->id,
@@ -129,12 +129,12 @@ class OrganizationModuleDependencyTest extends TestCase
             'Member'
         );
 
-        $this->expectException(ValidationException::class);
-
-        $service->disable(
-            $organization,
-            'Member'
-        );
+        try {
+            $service->disable($organization, 'Member');
+            $this->fail('Expected disabling the required Member module to throw a ValidationException.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('module', $exception->errors());
+        }
 
         $this->assertDatabaseHas('organization_modules', [
             'organization_id' => $organization->id,
@@ -181,11 +181,17 @@ class OrganizationModuleDependencyTest extends TestCase
             )
         );
 
-        $this->expectException(ValidationException::class);
+        try {
+            $service->enable($organizationB, 'Saradhi');
+            $this->fail('Expected enabling Saradhi without Member in organization B to throw a ValidationException.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('module', $exception->errors());
+        }
 
-        $service->enable(
-            $organizationB,
-            'Saradhi'
-        );
+        $this->assertDatabaseMissing('organization_modules', [
+            'organization_id' => $organizationB->id,
+            'module' => 'Saradhi',
+            'is_enabled' => true,
+        ]);
     }
 }

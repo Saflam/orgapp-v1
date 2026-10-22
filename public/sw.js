@@ -1,5 +1,6 @@
-const CACHE_NAME = 'saflivo-static-v1';
-const STATIC_ASSETS = ['/offline.html', '/favicon.ico'];
+const CACHE_NAME = 'saflivo-static-v2';
+const CACHE_PREFIX = 'saflivo-static-';
+const STATIC_ASSETS = ['/offline.html'];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
@@ -12,7 +13,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys()
-            .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+            .then((keys) => Promise.all(
+                keys
+                    .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+                    .map((key) => caches.delete(key))
+            ))
             .then(() => self.clients.claim())
     );
 });
@@ -23,15 +28,19 @@ self.addEventListener('fetch', (event) => {
 
     // Never cache navigations, authentication pages, APIs, or organization data.
     if (request.method !== 'GET' || url.origin !== self.location.origin) return;
-    if (request.mode === 'navigate' || url.pathname.startsWith('/api/')) {
-        if (request.mode === 'navigate') {
-            event.respondWith(fetch(request).catch(() => caches.match('/offline.html')));
-        }
+
+    if (request.mode === 'navigate') {
+        event.respondWith(
+            fetch(request).catch(() => caches.match('/offline.html'))
+        );
         return;
     }
 
-    // Only cache build assets and the favicon; do not cache user-specific responses.
-    if (url.pathname.startsWith('/build/assets/') || url.pathname === '/favicon.ico') {
+    if (url.pathname.startsWith('/api/')) return;
+
+    // Only cache versioned Vite build assets. Organization branding assets and favicons
+    // are deliberately excluded so changes are not hidden by a stale shared cache.
+    if (url.pathname.startsWith('/build/assets/')) {
         event.respondWith(
             caches.match(request).then((cached) => cached || fetch(request).then((response) => {
                 if (response.ok) {

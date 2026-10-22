@@ -42,6 +42,7 @@ class OrganizationController
                 'name' => $organization->name,
                 'code' => $organization->code,
                 'slug' => $organization->slug,
+                'membership_prefix' => data_get($organization->settings, 'membership_numbering.base_prefix'),
             ],
         ], 201);
     }

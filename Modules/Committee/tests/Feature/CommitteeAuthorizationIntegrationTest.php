@@ -194,4 +194,147 @@ class CommitteeAuthorizationIntegrationTest extends TestCase
             )
         );
     }
+
+    public function test_future_dated_committee_assignment_does_not_grant_permission_until_it_starts(): void
+    {
+        [$organization, $user, $membership, $permission] = $this->createAuthorizationFixture(
+            permissionModule: 'events',
+            membershipStart: today()->addDay()->toDateString(),
+            membershipEnd: today()->addDays(30)->toDateString(),
+            enablePermissionModule: true,
+        );
+
+        $authorization = app(AuthorizationService::class);
+        $context = new AuthorizationContext($organization->id);
+
+        $this->assertFalse($authorization->can($user, $permission->code, $context));
+
+        $membership->update(['start_date' => today()->subDay()->toDateString()]);
+
+        $this->assertTrue($authorization->can($user, $permission->code, $context));
+    }
+
+    public function test_expired_committee_assignment_does_not_grant_permission(): void
+    {
+        [$organization, $user, $membership, $permission] = $this->createAuthorizationFixture(
+            permissionModule: 'events',
+            membershipStart: today()->subDays(30)->toDateString(),
+            membershipEnd: today()->subDay()->toDateString(),
+            enablePermissionModule: true,
+        );
+
+        $this->assertFalse(
+            app(AuthorizationService::class)->can(
+                $user,
+                $permission->code,
+                new AuthorizationContext($organization->id),
+            )
+        );
+    }
+
+    public function test_designation_cannot_grant_permission_from_a_disabled_module(): void
+    {
+        [$organization, $user, $membership, $permission] = $this->createAuthorizationFixture(
+            permissionModule: 'events',
+            membershipStart: today()->subDay()->toDateString(),
+            membershipEnd: today()->addDays(30)->toDateString(),
+            enablePermissionModule: false,
+        );
+
+        $this->assertTrue($membership->exists);
+        $this->assertFalse(
+            app(AuthorizationService::class)->can(
+                $user,
+                $permission->code,
+                new AuthorizationContext($organization->id),
+            )
+        );
+    }
+
+    /**
+     * @return array{0: Organization, 1: User, 2: CommitteeMembership, 3: Permission}
+     */
+    private function createAuthorizationFixture(
+        string $permissionModule,
+        string $membershipStart,
+        string $membershipEnd,
+        bool $enablePermissionModule,
+    ): array {
+        $organization = Organization::factory()->create();
+        $modules = app(OrganizationModuleService::class);
+
+        // Required modules must be explicitly enabled in this test fixture.
+        $modules->enable($organization, 'Core');
+        $modules->enable($organization, 'Member');
+
+        // Optional module used by these authorization tests.
+        $modules->enable($organization, 'Committee');
+
+        if ($enablePermissionModule) {
+            $modules->enable($organization, 'Events');
+        }
+
+        $user = User::factory()->create();
+        OrganizationMembership::create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
+
+        $member = app(\Modules\Member\Services\MemberService::class)->create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_number' => 'AUTH-' . uniqid(),
+        ]);
+
+        $type = CommitteeType::create([
+            'organization_id' => $organization->id,
+            'name' => 'Authorization Committee',
+            'code' => 'AUTH-' . strtoupper(substr(uniqid(), -6)),
+            'is_active' => true,
+        ]);
+
+        $committee = Committee::create([
+            'organization_id' => $organization->id,
+            'committee_type_id' => $type->id,
+            'unit_id' => null,
+            'name' => 'Authorization Central Committee',
+            'kind' => CommitteeKind::RECURRING,
+            'status' => CommitteeStatus::ACTIVE,
+        ]);
+
+        $term = CommitteeTerm::create([
+            'committee_id' => $committee->id,
+            'start_date' => today()->subMonth()->toDateString(),
+            'end_date' => today()->addMonth()->toDateString(),
+            'status' => CommitteeTermStatus::ACTIVE,
+        ]);
+
+        $designation = Designation::create([
+            'organization_id' => $organization->id,
+            'name' => 'Authorization Secretary',
+            'code' => 'AUTH-SECRETARY-' . strtoupper(substr(uniqid(), -6)),
+            'scope' => DesignationScope::CENTRAL,
+            'is_active' => true,
+        ]);
+
+        $permission = Permission::create([
+            'module' => $permissionModule,
+            'name' => 'Authorization Test Permission',
+            'code' => 'authorization.test.' . strtolower($permissionModule) . '.' . uniqid(),
+        ]);
+        $designation->permissions()->attach($permission->id);
+
+        $committeeMembership = CommitteeMembership::create([
+            'committee_term_id' => $term->id,
+            'member_id' => $member->id,
+            'designation_id' => $designation->id,
+            'start_date' => $membershipStart,
+            'end_date' => $membershipEnd,
+            'status' => CommitteeMembershipStatus::ACTIVE,
+        ]);
+
+        return [$organization, $user, $committeeMembership, $permission];
+    }
+
 }

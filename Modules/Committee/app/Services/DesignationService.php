@@ -14,6 +14,8 @@ class DesignationService
         string $code,
         DesignationScope $scope = DesignationScope::CENTRAL,
         ?string $description = null,
+        int $sortOrder = 100,
+        bool $isKeyPosition = false,
     ): Designation {
         return DB::transaction(function () use (
             $organizationId,
@@ -21,6 +23,8 @@ class DesignationService
             $code,
             $scope,
             $description,
+            $sortOrder,
+            $isKeyPosition,
         ) {
             return Designation::create([
                 'organization_id' => $organizationId,
@@ -29,6 +33,8 @@ class DesignationService
                 'scope' => $scope,
                 'description' => $description,
                 'is_active' => true,
+                'sort_order' => $sortOrder,
+                'is_key_position' => $isKeyPosition,
             ]);
         });
     }
@@ -38,12 +44,17 @@ class DesignationService
         string $name,
         DesignationScope $scope = DesignationScope::CENTRAL,
         ?string $description = null,
+        ?int $sortOrder = null,
+        ?bool $isKeyPosition = null,
     ): Designation {
-        $designation->update([
+        $attributes = [
             'name' => $name,
             'scope' => $scope,
             'description' => $description,
-        ]);
+        ];
+        if ($sortOrder !== null) { $attributes['sort_order'] = $sortOrder; }
+        if ($isKeyPosition !== null) { $attributes['is_key_position'] = $isKeyPosition; }
+        $designation->update($attributes);
 
         return $designation->refresh();
     }

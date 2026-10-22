@@ -13,21 +13,34 @@ class OrganizationService
         private readonly ModuleRegistry $moduleRegistry,
         private readonly SuperAdminProvisioningService $superAdminProvisioningService,
         private readonly NotificationService $notificationService,
+        private readonly MembershipNumberingSettingsService $membershipNumberingSettingsService,
     ) {
     }
 
     public function create(array $data): Organization
     {
         return DB::transaction(function () use ($data) {
+            $selectedModules = $data['modules'] ?? [];
+            foreach ($selectedModules as $module) {
+                if (! is_string($module) || ! $this->moduleRegistry->isAvailable($module) || $this->moduleService->isRequired($module)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'modules' => ["The selected module [{$module}] is not an available optional module."],
+                    ]);
+                }
+            }
+
             $this->ensureSuperAdminEmailIsAvailable(
                 $data['super_admin']['email']
             );
 
-            $organization = Organization::create(
-                $data['organization']
-            );
+            $organizationData = $data['organization'];
+            $membershipPrefix = $organizationData['membership_prefix'] ?? null;
+            unset($organizationData['membership_prefix']);
 
-            $this->initializeModules($organization);
+            $organization = Organization::create($organizationData);
+            $this->membershipNumberingSettingsService->initialize($organization, $membershipPrefix);
+
+            $this->initializeModules($organization, $data['modules'] ?? []);
             $this->initializeNotificationChannels(
                 $organization,
                 $data['notification_channels'] ?? [],
@@ -83,7 +96,7 @@ class OrganizationService
         }
     }
 
-    private function initializeModules(Organization $organization): void
+    private function initializeModules(Organization $organization, array $selectedModules = []): void
     {
         // Required modules are initialized explicitly rather than relying on
         // their presence in the optional-module registry iteration. If a
@@ -103,10 +116,14 @@ class OrganizationService
                 continue;
             }
 
-            $this->moduleService->disable(
-                $organization,
-                $module,
-            );
+            if (in_array($module, $selectedModules, true)) {
+                $this->moduleService->enable($organization, $module);
+            } else {
+                $this->moduleService->disable(
+                    $organization,
+                    $module,
+                );
+            }
         }
     }
 }

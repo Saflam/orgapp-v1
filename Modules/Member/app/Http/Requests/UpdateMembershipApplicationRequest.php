@@ -3,12 +3,14 @@
 namespace Modules\Member\Http\Requests;
 
 use App\Support\Organization\CurrentOrganization;
+use App\Rules\ValidPhoneNumberForCountry;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Core\Models\Organization;
 use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Services\MembershipApplicationExtensionRegistry;
+use Modules\Member\Rules\ValidPhoneNumber;
 
 class UpdateMembershipApplicationRequest extends FormRequest
 {
@@ -82,6 +84,7 @@ class UpdateMembershipApplicationRequest extends FormRequest
         $organization = $this->resolveOrganization();
 
         $rules = [
+            'membership_type_id' => ['sometimes', 'required', 'integer', Rule::exists('membership_types', 'id')->where('organization_id', $organization?->id)->where('is_active', true)],
             'member' => ['sometimes', 'array'],
             'member.first_name' => ['sometimes', 'required', 'string', 'max:255'],
             'member.middle_name' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -89,17 +92,19 @@ class UpdateMembershipApplicationRequest extends FormRequest
             'member.date_of_birth' => ['sometimes', 'nullable', 'date'],
             'member.gender' => ['sometimes', 'nullable', 'string', 'max:50'],
             'member.blood_group' => ['sometimes', 'required', 'string', 'max:20'],
-            'member.whatsapp' => ['sometimes', 'nullable', 'string', 'max:50'],
-            'member.whatsapp_calling_code' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'member.whatsapp' => ['sometimes', 'nullable', 'string', 'max:50', new ValidPhoneNumber($this->input('member.whatsapp_calling_code'))],
+            'member.whatsapp_calling_code' => ['sometimes', 'nullable', 'string', 'max:10', 'regex:/^\+?[1-9]\d{0,2}$/'],
             'member.home_contact' => ['sometimes', 'nullable', 'string', 'max:50'],
             'member.profession' => ['sometimes', 'nullable', 'string', 'max:255'],
             'member.company' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'member.phone_numbers' => ['sometimes', 'array', 'max:10'],
+            'member.emergency_contacts' => ['sometimes', 'array', 'max:5'],
             'member.unit_id' => [
                 'sometimes',
                 'nullable',
                 'integer',
                 $organization instanceof Organization
-                    ? Rule::exists('units', 'id')->where('organization_id', $organization->id)
+                    ? Rule::exists('units', 'id')->where('organization_id', $organization->id)->where('is_active', true)
                     : 'exists:units,id',
             ],
             'address' => ['sometimes', 'array'],
@@ -114,6 +119,45 @@ class UpdateMembershipApplicationRequest extends FormRequest
             'extension_data' => ['sometimes', 'array'],
             'reason' => ['nullable', 'string', 'max:5000'],
         ];
+
+        foreach ((array) $this->input('member.phone_numbers', []) as $index => $phoneNumber) {
+            $phoneNumber = is_array($phoneNumber) ? $phoneNumber : [];
+            $prefix = "member.phone_numbers.{$index}";
+            $rules[$prefix] = ['required', 'array'];
+            $rules["{$prefix}.type"] = ['required', 'string', 'max:50'];
+            $rules["{$prefix}.phone"] = [
+                'required', 'string', 'max:50',
+                new ValidPhoneNumberForCountry(
+                    is_string($phoneNumber['country_iso2'] ?? null)
+                        ? $phoneNumber['country_iso2']
+                        : null,
+                ),
+            ];
+            $rules["{$prefix}.country_iso2"] = ['required', 'string', 'size:2', 'alpha'];
+            $rules["{$prefix}.label"] = ['sometimes', 'nullable', 'string', 'max:100'];
+            $rules["{$prefix}.extension"] = ['sometimes', 'nullable', 'string', 'max:20'];
+            $rules["{$prefix}.is_primary"] = ['sometimes', 'boolean'];
+        }
+
+        foreach ((array) $this->input('member.emergency_contacts', []) as $index => $contact) {
+            $contact = is_array($contact) ? $contact : [];
+            $prefix = "member.emergency_contacts.{$index}";
+            $rules[$prefix] = ['required', 'array'];
+            $rules["{$prefix}.contact_name"] = ['required', 'string', 'max:255'];
+            $rules["{$prefix}.relationship"] = ['sometimes', 'nullable', 'string', 'max:100'];
+            $rules["{$prefix}.phone"] = [
+                'required', 'string', 'max:50',
+                new ValidPhoneNumberForCountry(
+                    is_string($contact['country_iso2'] ?? null)
+                        ? $contact['country_iso2']
+                        : null,
+                ),
+            ];
+            $rules["{$prefix}.country_iso2"] = ['required', 'string', 'size:2', 'alpha'];
+            $rules["{$prefix}.extension"] = ['sometimes', 'nullable', 'string', 'max:20'];
+            $rules["{$prefix}.is_primary"] = ['sometimes', 'boolean'];
+            $rules["{$prefix}.notes"] = ['sometimes', 'nullable', 'string', 'max:2000'];
+        }
 
         if ($organization instanceof Organization) {
             $extensionRules = app(

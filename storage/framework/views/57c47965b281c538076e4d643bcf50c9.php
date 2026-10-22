@@ -9,6 +9,9 @@
     <meta name="description" content="<?php echo $__env->yieldContent('description', 'A connected workspace for membership, events, and organization operations.'); ?>">
     <?php echo app('Illuminate\Foundation\Vite')->fonts(); ?>
     <?php echo app('Illuminate\Foundation\Vite')(['resources/css/app.css', 'resources/js/app.js']); ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(request()->routeIs('organization.membership.apply', 'organization.membership.apply.spouse')): ?>
+        <?php echo app('Illuminate\Foundation\Vite')('Modules/Member/resources/assets/js/membership-application.js'); ?>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     <?php echo $__env->yieldPushContent('head'); ?>
 </head>
 <body class="min-h-screen bg-stone-50 font-sans text-slate-900 antialiased">

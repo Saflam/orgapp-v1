@@ -16,6 +16,7 @@ class CommitteeMembership extends Model
         'start_date',
         'end_date',
         'status',
+        'end_reason',
     ];
 
     protected function casts(): array

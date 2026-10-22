@@ -68,6 +68,7 @@ class MemberService
                     'home_contact',
                     'profession',
                     'company',
+                    'company_address',
                 ])
             );
 
@@ -173,6 +174,7 @@ class MemberService
                     'home_contact',
                     'profession',
                     'company',
+                    'company_address',
                 ])
             );
 

@@ -227,10 +227,18 @@ class FinanceJournalService
         FinanceScope $scope,
         Organization $organization,
     ): void {
+        $periodScope = $period->scope;
+
+        // A period must belong to the same organization and be organization-wide.
+        // Journal ledger scope remains independent, so unit-collected transactions
+        // can post to their unit ledger while using the organization's period.
         if ($period->organization_id !== $organization->id
-            || $period->finance_scope_id !== $scope->id) {
+            || ! $periodScope
+            || $periodScope->organization_id !== $organization->id
+            || ! $periodScope->isOrganizationScope()
+            || $scope->organization_id !== $organization->id) {
             throw new \InvalidArgumentException(
-                'The financial period does not belong to the finance scope.'
+                'The financial period must be an organization-level period for the same organization.'
             );
         }
     }

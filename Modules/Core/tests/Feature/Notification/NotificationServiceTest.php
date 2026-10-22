@@ -100,8 +100,8 @@ class NotificationServiceTest extends TestCase
         app(NotificationChannelRegistry::class)->register(new FakeNotificationChannel('whatsapp'));
         $service = app(NotificationService::class);
 
-        $service->configureSystemChannel('whatsapp', true, ['api_key' => 'system-secret']);
-        $service->setSystemDefaultAccess($organization, 'whatsapp', true);
+        $service->configureSystemChannel('whatsapp', true, ['phone_number_id' => '123', 'access_token' => 'system-secret', 'template_name' => 'notice']);
+        $service->updateWhatsAppPermissions($organization, 'whatsapp', true, true, true, false);
 
         $result = $service->notify($organization, $user, 'member.application.approved', 'Approved', 'Approved.');
 
@@ -122,6 +122,7 @@ class NotificationServiceTest extends TestCase
         $service = app(NotificationService::class);
 
         $service->configureSystemChannel('sms', true, ['api_key' => 'system-secret']);
+        $service->setChannelAllowed($organization, 'sms', true);
         $service->setSystemDefaultAccess($organization, 'sms', true);
         $service->configureOrganizationChannel($organization, 'sms', true, ['api_key' => 'org-secret']);
 
@@ -159,6 +160,7 @@ class NotificationServiceTest extends TestCase
         $service = app(NotificationService::class);
 
         $service->configureSystemChannel('sms', true, ['api_key' => 'system-secret']);
+        $service->setChannelAllowed($organization, 'sms', true);
         $service->setSystemDefaultAccess($organization, 'sms', true);
         $service->configureOrganizationChannel($organization, 'sms', false, ['api_key' => 'org-secret']);
 
@@ -166,6 +168,52 @@ class NotificationServiceTest extends TestCase
 
         $this->assertCount(1, $result['deliveries']);
         $this->assertSame('system', $result['deliveries'][0]->channel_source);
+    }
+
+    public function test_organization_credentials_cannot_bypass_system_admin_channel_permission(): void
+    {
+        Queue::fake();
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+        app(NotificationChannelRegistry::class)->register(new FakeNotificationChannel('whatsapp'));
+        $service = app(NotificationService::class);
+        $service->configureOrganizationChannel($organization, 'whatsapp', true, [
+            'phone_number_id' => '123',
+            'access_token' => 'organization-secret',
+            'template_name' => 'notice',
+        ]);
+
+        $result = $service->notify($organization, $user, 'member.application.approved', 'Approved', 'Approved.');
+
+        $this->assertCount(0, $result['deliveries']);
+    }
+
+    public function test_whatsapp_requires_feature_permission_even_when_default_is_allowed(): void
+    {
+        Queue::fake();
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+        app(NotificationChannelRegistry::class)->register(new FakeNotificationChannel('whatsapp'));
+        $service = app(NotificationService::class);
+        $service->configureSystemChannel('whatsapp', true, [
+            'phone_number_id' => '123',
+            'access_token' => 'system-secret',
+            'template_name' => 'notice',
+        ]);
+        $service->setSystemDefaultAccess($organization, 'whatsapp', true);
+
+        // The System Admin permission is stored independently, but cannot bypass
+        // the separate master feature permission enforced by the resolver.
+        $this->assertDatabaseHas('organization_notification_channels', [
+            'organization_id' => $organization->id,
+            'channel' => 'whatsapp',
+            'is_allowed' => 0,
+            'use_system_default' => 1,
+        ]);
+
+        $result = $service->notify($organization, $user, 'member.application.approved', 'Approved', 'Approved.');
+
+        $this->assertCount(0, $result['deliveries']);
     }
 
     public function test_disabled_organization_channel_creates_no_delivery(): void
@@ -222,9 +270,52 @@ class NotificationServiceTest extends TestCase
 
         $this->assertCount(0, $result['deliveries']);
     }
+
+    
+    public function test_deliver_notification_job_executes_successfully(): void
+    {
+        Queue::fake();
+        
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+
+        $channel = new FakeNotificationChannel('email');
+        app(NotificationChannelRegistry::class)->register($channel);
+
+        $service = app(NotificationService::class);
+        $service->configureChannel($organization, 'email', true);
+
+        $result = $service->notify(
+            organization: $organization,
+            user: $user,
+            event: 'member.application.approved',
+            title: 'Application approved',
+            body: 'Your membership application has been approved.',
+            sourceModule: 'Member',
+        );
+
+        $delivery = $result['deliveries'][0];
+
+        // Execute the actual job handler; no real provider is called.
+        app(\Modules\Core\Jobs\DeliverNotification::class, [
+            'deliveryId' => $delivery->id,
+        ])->handle(
+            app(NotificationChannelRegistry::class),
+            app(\Modules\Core\Services\NotificationChannelResolver::class),
+            app(\Modules\Core\Services\WhatsAppUsageRecorder::class),
+        );
+
+        $delivery->refresh();
+
+        $this->assertSame('sent', $delivery->status);
+        $this->assertSame(1, $delivery->attempts);
+        $this->assertNotNull($delivery->sent_at);
+        $this->assertNull($delivery->error);
+    }
+
 }
 
-class FakeNotificationChannel implements NotificationChannel
+class FakeNotificationChannel implements \Modules\Core\Contracts\NotificationChannel
 {
     public function __construct(private readonly string $channel) {}
 
@@ -233,8 +324,10 @@ class FakeNotificationChannel implements NotificationChannel
         return $this->channel;
     }
 
-    public function send(NotificationDelivery $delivery, array $credentials): void
-    {
-        // Test double.
+    public function send(
+        \Modules\Core\Models\NotificationDelivery $delivery,
+        array $credentials,
+    ): void {
+        // No external provider call.
     }
 }

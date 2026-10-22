@@ -12,7 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function () {
-            require base_path('routes/organization.php');
+            // Organization pages must use Laravel's web middleware so sessions,
+            // cookies, CSRF protection, and Auth::user() work on tenant hosts.
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(base_path('routes/organization.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

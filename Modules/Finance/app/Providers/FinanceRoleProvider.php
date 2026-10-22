@@ -16,6 +16,8 @@ class FinanceRoleProvider implements RoleProvider
                 'code' => 'finance_admin',
                 'description' => 'Manage organization finance configuration and finance master data.',
                 'permissions' => [
+                    'finance.period.view',
+                    'finance.period.manage',
                     'finance.account.view',
                     'finance.account.manage',
                     'finance.item.view',

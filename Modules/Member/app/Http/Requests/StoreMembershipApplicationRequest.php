@@ -3,12 +3,16 @@
 namespace Modules\Member\Http\Requests;
 
 use App\Support\Organization\CurrentOrganization;
+use App\Rules\ValidPhoneNumberForCountry;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Contracts\Validation\Validator;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\OrganizationIdentificationService;
 use Modules\Member\Services\MembershipApplicationExtensionRegistry;
+use Modules\Member\Rules\ValidPhoneNumber;
+use Modules\Member\Enums\MembershipApplicationStatus;
+use Modules\Member\Models\MembershipApplication;
 
 class StoreMembershipApplicationRequest extends FormRequest
 {
@@ -109,6 +113,19 @@ class StoreMembershipApplicationRequest extends FormRequest
         $configurations = app(
             OrganizationIdentificationService::class
         )->enabled($organization);
+
+        $draft = MembershipApplication::query()
+            ->where('organization_id', $organization->id)
+            ->where('user_id', $this->user()?->id)
+            ->where('status', MembershipApplicationStatus::DRAFT)
+            ->latest('id')
+            ->first();
+        $savedDraftDocumentSides = $draft
+            ? $draft->getMedia('application-documents')
+                ->filter(fn ($media): bool => $media->getCustomProperty('draft_upload') === true)
+                ->map(fn ($media): string => (string) $media->getCustomProperty('identification_code') . '|' . (string) $media->getCustomProperty('document_side'))
+                ->all()
+            : [];
 
         $codes = $configurations
             ->map(fn ($configuration) => $configuration->identificationType->code)
@@ -237,8 +254,9 @@ class StoreMembershipApplicationRequest extends FormRequest
             ];
 
             foreach ($documentRequirements as $side) {
+                $hasSavedDraftFile = in_array($code . '|' . $side, $savedDraftDocumentSides, true);
                 $rules["identification_documents.{$code}.{$side}"] = [
-                    'required',
+                    $hasSavedDraftFile ? 'sometimes' : 'required',
                     'file',
                     'mimes:jpg,jpeg,png,pdf',
                     'max:10240',
@@ -254,17 +272,50 @@ class StoreMembershipApplicationRequest extends FormRequest
      */
     private function baseRules(?Organization $organization = null): array
     {
-        return [
+        $usesAddressCollection = $this->routeIs('organization.membership.apply.submit')
+            || $this->routeIs('organization.membership.apply.spouse.submit');
+
+        // The primary applicant uploads the photo while saving Step 1. That
+        // media belongs to the draft and must not be uploaded again at final
+        // submission unless the applicant explicitly chooses a replacement.
+        $hasSavedProfilePhoto = false;
+        if (
+            $this->routeIs('organization.membership.apply.submit')
+            && $organization instanceof Organization
+            && $this->user() !== null
+        ) {
+            $draft = MembershipApplication::query()
+                ->where('organization_id', $organization->id)
+                ->where('user_id', $this->user()->id)
+                ->where('status', MembershipApplicationStatus::DRAFT)
+                ->latest('id')
+                ->first();
+
+            $hasSavedProfilePhoto = $draft?->getMedia('profile-photo')->isNotEmpty() ?? false;
+        }
+
+        $profilePhotoRequired = (
+            $this->routeIs('organization.membership.apply.submit')
+            || $this->routeIs('organization.membership.apply.spouse.submit')
+        ) && ! $hasSavedProfilePhoto;
+
+        $rules = [
             'user_id' => [
-                'required',
+                $this->routeIs('organization.membership.apply.spouse.submit') ? 'sometimes' : 'required',
                 'integer',
                 'exists:users,id',
             ],
-            'membership_type_id' => [
-                'required',
-                'integer',
-                'exists:membership_types,id',
+            'membership_type_id' => ['nullable', 'integer', 'exists:membership_types,id'],
+            'primary_phone' => [
+                ($this->routeIs('organization.membership.apply.submit') || $this->routeIs('organization.membership.apply.spouse.submit')) ? 'required' : 'sometimes',
+                'nullable', 'string', 'max:50',
+                new \App\Rules\ValidPhoneNumberForCountry($this->input('primary_phone_country_iso2')),
             ],
+            'primary_phone_country_iso2' => ['required_with:primary_phone', 'nullable', 'string', 'size:2', 'alpha'],
+            'company_address' => ['nullable', 'string', 'max:255'],
+            'preferred_unit_id' => [($this->routeIs('organization.membership.apply.submit') || $this->routeIs('organization.membership.apply.spouse.submit')) ? 'required' : 'sometimes', 'nullable', 'integer', $organization instanceof Organization ? Rule::exists('units', 'id')->where('organization_id', $organization->id)->where('is_active', true) : 'exists:units,id'],
+            'profile_photo' => [$profilePhotoRequired ? 'required' : 'sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
+            'email' => [$this->routeIs('organization.membership.apply.spouse.submit') ? 'required' : 'sometimes', 'nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'first_name' => [
                 'required',
                 'string',
@@ -280,10 +331,7 @@ class StoreMembershipApplicationRequest extends FormRequest
                 'string',
                 'max:255',
             ],
-            'date_of_birth' => [
-                'nullable',
-                'date',
-            ],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
             'gender' => [
                 'nullable',
                 'string',
@@ -298,11 +346,13 @@ class StoreMembershipApplicationRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:50',
+                new ValidPhoneNumber($this->input('whatsapp_calling_code')),
             ],
             'whatsapp_calling_code' => [
                 'nullable',
                 'string',
                 'max:10',
+                'regex:/^\+?[1-9]\d{0,2}$/',
             ],
             'home_contact' => [
                 'nullable',
@@ -323,20 +373,32 @@ class StoreMembershipApplicationRequest extends FormRequest
                 'nullable',
                 'integer',
                 $organization instanceof Organization
-                    ? Rule::exists('units', 'id')->where('organization_id', $organization->id)
+                    ? Rule::exists('units', 'id')->where('organization_id', $organization->id)->where('is_active', true)
                     : 'exists:units,id',
             ],
-            'address' => [
-                'required',
-                'array',
-            ],
+            // The web application uses the structured addresses collection. Keep
+            // the legacy single-address API contract available for existing clients.
+            'address' => [$usesAddressCollection ? 'sometimes' : 'required', 'array'],
+            'addresses' => [$usesAddressCollection ? 'required' : 'sometimes', 'array', 'min:2', 'max:6'],
+            'addresses.*' => ['required', 'array'],
+            'addresses.*.address_type' => [$usesAddressCollection ? 'required' : 'sometimes', 'string', 'max:50'],
+            'addresses.0.address_type' => [$usesAddressCollection ? 'required' : 'sometimes', 'in:residential'],
+            'addresses.1.address_type' => [$usesAddressCollection ? 'required' : 'sometimes', 'in:permanent'],
+            'addresses.*.address_line_1' => ['required', 'string', 'max:255'],
+            'addresses.*.address_line_2' => ['nullable', 'string', 'max:255'],
+            'addresses.*.locality' => ['nullable', 'string', 'max:255'],
+            'addresses.*.city' => ['nullable', 'string', 'max:255'],
+            'addresses.*.state' => ['nullable', 'string', 'max:255'],
+            'addresses.*.postal_code' => ['nullable', 'string', 'max:50'],
+            'addresses.*.country' => ['required', 'string', 'max:255'],
+            'addresses.*.is_primary' => ['sometimes', 'boolean'],
             'address.address_type' => [
-                'required',
+                $usesAddressCollection ? 'sometimes' : 'required',
                 'string',
                 'max:50',
             ],
             'address.address_line_1' => [
-                'required',
+                $usesAddressCollection ? 'sometimes' : 'required',
                 'string',
                 'max:255',
             ],
@@ -390,6 +452,54 @@ class StoreMembershipApplicationRequest extends FormRequest
                 'sometimes',
                 'array',
             ],
+            'spouse' => ['sometimes', 'array'],
+            'spouse.needed' => ['sometimes', 'in:yes,no'],
+            'spouse.existing' => ['required_if:spouse.needed,yes', 'nullable', 'in:yes,no'],
+            'spouse.member_id' => ['required_if:spouse.existing,yes', 'nullable', 'integer', $organization instanceof Organization ? Rule::exists('members', 'id')->where('organization_id', $organization->id) : 'exists:members,id'],
+            'source_application_id' => [$this->routeIs('organization.membership.apply.spouse.submit') ? 'required' : 'sometimes', 'nullable', 'integer', 'exists:membership_applications,id'],
+            'phone_numbers' => ['sometimes', 'array', 'max:10'],
+            'emergency_contacts' => [($this->routeIs('organization.membership.apply.submit') || $this->routeIs('organization.membership.apply.spouse.submit')) ? 'required' : 'sometimes', 'array', 'min:1', 'max:5'],
         ];
+
+        foreach ((array) $this->input('phone_numbers', []) as $index => $phoneNumber) {
+            $phoneNumber = is_array($phoneNumber) ? $phoneNumber : [];
+            $prefix = "phone_numbers.{$index}";
+            $rules[$prefix] = ['required', 'array'];
+            $rules["{$prefix}.type"] = ['required', 'string', 'max:50'];
+            $rules["{$prefix}.phone"] = [
+                'required', 'string', 'max:50',
+                new ValidPhoneNumberForCountry(
+                    is_string($phoneNumber['country_iso2'] ?? null)
+                        ? $phoneNumber['country_iso2']
+                        : null,
+                ),
+            ];
+            $rules["{$prefix}.country_iso2"] = ['required', 'string', 'size:2', 'alpha'];
+            $rules["{$prefix}.label"] = ['sometimes', 'nullable', 'string', 'max:100'];
+            $rules["{$prefix}.extension"] = ['sometimes', 'nullable', 'string', 'max:20'];
+            $rules["{$prefix}.is_primary"] = ['sometimes', 'boolean'];
+        }
+
+        foreach ((array) $this->input('emergency_contacts', []) as $index => $contact) {
+            $contact = is_array($contact) ? $contact : [];
+            $prefix = "emergency_contacts.{$index}";
+            $rules[$prefix] = ['required', 'array'];
+            $rules["{$prefix}.contact_name"] = ['required', 'string', 'max:255'];
+            $rules["{$prefix}.relationship"] = ['sometimes', 'nullable', 'string', 'max:100'];
+            $rules["{$prefix}.phone"] = [
+                'required', 'string', 'max:50',
+                new ValidPhoneNumberForCountry(
+                    is_string($contact['country_iso2'] ?? null)
+                        ? $contact['country_iso2']
+                        : null,
+                ),
+            ];
+            $rules["{$prefix}.country_iso2"] = ['required', 'string', 'size:2', 'alpha'];
+            $rules["{$prefix}.extension"] = ['sometimes', 'nullable', 'string', 'max:20'];
+            $rules["{$prefix}.is_primary"] = ['sometimes', 'boolean'];
+            $rules["{$prefix}.notes"] = ['sometimes', 'nullable', 'string', 'max:2000'];
+        }
+
+        return $rules;
     }
 }

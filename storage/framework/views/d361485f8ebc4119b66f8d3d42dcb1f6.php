@@ -9,29 +9,7 @@
 
 <?php $__env->startSection('content'); ?>
 <div class="min-h-screen bg-stone-50" style="--org-primary: <?php echo e($primaryColor); ?>; --org-accent: <?php echo e($accentColor); ?>">
-    <header class="border-b border-slate-200/80 bg-white">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-10">
-            <a href="<?php echo e(route('organization.site')); ?>" class="flex min-w-0 items-center gap-3 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2" style="--tw-ring-color: var(--org-primary)" aria-label="<?php echo e($organization->name); ?> home">
-                <?php if($logoPath): ?>
-                    <img src="<?php echo e($logoPath); ?>" alt="" class="size-11 shrink-0 rounded-xl object-contain">
-                <?php else: ?>
-                    <span
-                        class="flex size-11 shrink-0 items-center justify-center rounded-2xl text-lg font-bold text-white"
-                        style="background: var(--org-primary)"
-                    ><?php echo e(mb_strtoupper(mb_substr($organization->name, 0, 1))); ?></span>
-                <?php endif; ?>
-                <span class="truncate text-lg font-semibold tracking-tight text-slate-950 sm:text-xl"><?php echo e($organization->name); ?></span>
-            </a>
-            <nav aria-label="Organization navigation" class="flex items-center gap-2 sm:gap-3">
-                <?php if(auth()->guard()->guest()): ?>
-                    <a href="<?php echo e(route('login')); ?>" class="inline-flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-slate-700 transition hover:bg-stone-100">Sign in</a>
-                <?php else: ?>
-                    <span class="hidden text-sm font-medium text-slate-600 sm:inline">Signed in</span>
-                <?php endif; ?>
-                <a href="#about" class="inline-flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90" style="background: var(--org-primary)">About us</a>
-            </nav>
-        </div>
-    </header>
+    <?php echo $__env->make('organization.partials.header', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
     <main>
         <section class="relative isolate overflow-hidden">
@@ -45,7 +23,7 @@
                     <h1 class="mt-7 text-4xl font-semibold leading-tight tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-6xl">Welcome to <span style="color: var(--org-primary)"><?php echo e($organization->name); ?></span></h1>
                     <p class="mt-6 max-w-xl text-lg leading-8 text-slate-600"><?php echo e(data_get($branding, 'tagline', 'A connected community, working together.')); ?></p>
                     <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <a href="<?php echo e(route('login')); ?>" class="inline-flex min-h-12 items-center justify-center rounded-full px-6 text-sm font-semibold text-white shadow-md transition hover:opacity-90" style="background: var(--org-primary)">Member sign in</a>
+                        <a href="<?php echo e($isMember ? url('/member/profile') : ($hasPendingMembershipApplication ? url('/membership/apply') : url('/membership/apply'))); ?>" class="inline-flex min-h-12 items-center justify-center rounded-full px-6 text-sm font-semibold text-white shadow-md transition hover:opacity-90" style="background: var(--org-primary)"><?php echo e($isMember ? 'Member Profile' : (($hasDraftMembershipApplication ?? false) ? 'Continue Application' : ($hasPendingMembershipApplication ? 'Application in Progress' : 'Apply Membership'))); ?></a>
                         <a href="#about" class="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-800 transition hover:bg-stone-100">Learn about us</a>
                     </div>
                     <p class="mt-5 text-xs leading-5 text-slate-500">A digital home for your organization, powered by Saflivo.</p>
@@ -67,11 +45,13 @@
                                 <h2 class="mt-4 text-sm font-semibold text-slate-900">Membership</h2>
                                 <p class="mt-1 text-sm leading-6 text-slate-600">Member information and services in one place.</p>
                             </article>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($eventsModuleEnabled): ?>
                             <article class="rounded-2xl bg-stone-50 p-5">
                                 <span class="flex size-10 items-center justify-center rounded-xl bg-white text-lg shadow-sm" style="color: var(--org-primary)" aria-hidden="true">▦</span>
-                                <h2 class="mt-4 text-sm font-semibold text-slate-900">Events</h2>
-                                <p class="mt-1 text-sm leading-6 text-slate-600">Stay connected with activities and gatherings.</p>
+                                <h2 class="mt-4 text-sm font-semibold text-slate-900">Latest Events</h2>
+                                <p class="mt-1 text-sm leading-6 text-slate-600">Demo content: upcoming activities and gatherings will appear here.</p>
                             </article>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
                         <div class="mt-4 rounded-2xl p-5 text-white" style="background: var(--org-primary)">
                             <p class="text-sm font-semibold">Built around your organization</p>
@@ -92,6 +72,31 @@
             </div>
         </section>
     </main>
+
+        <section id="news" class="border-t border-slate-200/80 bg-stone-50">
+            <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+                <p class="text-xs font-semibold uppercase tracking-[0.16em]" style="color: var(--org-primary)">Community updates</p>
+                <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Latest News & Announcements</h2>
+                <p class="mt-3 max-w-2xl text-slate-600">Demo content for the public website. News and announcements will be supplied by their respective modules when enabled.</p>
+                <div class="mt-7 grid gap-4 md:grid-cols-2">
+                    <article class="rounded-2xl border border-slate-200 bg-white p-6"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Sample announcement</p><h3 class="mt-2 text-lg font-semibold text-slate-900">Welcome to our community website</h3><p class="mt-2 text-sm leading-6 text-slate-600">Organization news and public notices will appear here when the relevant module is available.</p></article>
+                    <article class="rounded-2xl border border-slate-200 bg-white p-6"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Community update</p><h3 class="mt-2 text-lg font-semibold text-slate-900">Stay connected</h3><p class="mt-2 text-sm leading-6 text-slate-600">Check back for public updates and important information from the organization.</p></article>
+                </div>
+            </div>
+        </section>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($eventsModuleEnabled): ?>
+        <section id="events" class="border-t border-slate-200/80 bg-white">
+            <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8 lg:px-10">
+                <p class="text-xs font-semibold uppercase tracking-[0.16em]" style="color: var(--org-primary)">What’s happening</p>
+                <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Upcoming Events</h2>
+                <p class="mt-3 text-slate-600">Sample public event content. Only events marked as public should be shown here.</p>
+                <article class="mt-6 rounded-2xl border border-slate-200 p-6"><p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Sample event</p><h3 class="mt-2 text-lg font-semibold text-slate-900">Community gathering</h3><p class="mt-2 text-sm leading-6 text-slate-600">Demo event card. It will be replaced by public events from the Events module.</p></article>
+            </div>
+        </section>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        <section id="contact" class="border-t border-slate-200/80 bg-white">
+            <div class="mx-auto max-w-7xl px-5 py-12 sm:px-8 lg:px-10"><h2 class="text-2xl font-semibold tracking-tight text-slate-950">Contact Us</h2><p class="mt-3 text-slate-600">Contact details can be configured for this organization.</p></div>
+        </section>
 
     <footer class="border-t border-slate-200 bg-stone-50">
         <div class="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10">

@@ -20,6 +20,7 @@ class StoreMembershipApplicationRequestTest extends TestCase
 
     private function makeRequest(
         Organization $organization,
+        array $input = [],
     ): StoreMembershipApplicationRequest {
         $uri = '/api/v1/organizations/'
             . $organization->id
@@ -28,6 +29,7 @@ class StoreMembershipApplicationRequestTest extends TestCase
         $request = StoreMembershipApplicationRequest::create(
             $uri,
             'POST',
+            $input,
         );
 
         $route = new Route(
@@ -129,6 +131,7 @@ class StoreMembershipApplicationRequestTest extends TestCase
             [
                 'nullable',
                 'date',
+                'before_or_equal:today',
             ],
             $rules['date_of_birth']
         );
@@ -166,6 +169,46 @@ class StoreMembershipApplicationRequestTest extends TestCase
             'company',
             $rules
         );
+    }
+
+
+    public function test_additional_phone_numbers_and_emergency_contacts_accept_valid_country_matched_numbers(): void
+    {
+        $organization = Organization::factory()->create();
+        $data = $this->validApplicationData($organization);
+        $data['phone_numbers'] = [[
+            'type' => 'whatsapp',
+            'phone' => '9876543210',
+            'country_iso2' => 'IN',
+        ]];
+        $data['emergency_contacts'] = [[
+            'contact_name' => 'Emergency Person',
+            'relationship' => 'Sibling',
+            'phone' => '+971501234567',
+            'country_iso2' => 'AE',
+        ]];
+
+        $request = $this->makeRequest($organization, $data);
+        $validator = Validator::make($request->all(), $request->rules());
+
+        $this->assertFalse($validator->fails(), $validator->errors()->toJson());
+    }
+
+    public function test_additional_phone_number_rejects_mismatched_selected_country(): void
+    {
+        $organization = Organization::factory()->create();
+        $data = $this->validApplicationData($organization);
+        $data['phone_numbers'] = [[
+            'type' => 'whatsapp',
+            'phone' => '+919876543210',
+            'country_iso2' => 'AE',
+        ]];
+
+        $request = $this->makeRequest($organization, $data);
+        $validator = Validator::make($request->all(), $request->rules());
+
+        $this->assertTrue($validator->fails());
+        $this->assertArrayHasKey('phone_numbers.0.phone', $validator->errors()->toArray());
     }
 
     public function test_first_name_is_required(): void

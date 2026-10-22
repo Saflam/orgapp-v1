@@ -70,16 +70,67 @@ class NotificationService
         );
     }
 
+    public function setChannelAllowed(Organization $organization, string $channel, bool $allowed): OrganizationNotificationChannel
+    {
+        $existing = OrganizationNotificationChannel::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('channel', $channel)
+            ->first();
+        return $this->updateWhatsAppPermissions(
+            $organization,
+            $channel,
+            $allowed,
+            (bool) ($existing?->use_system_default ?? false),
+            $allowed && ($existing?->utility_allowed ?? false),
+            $allowed && ($existing?->marketing_allowed ?? false),
+        );
+    }
+
+    public function updateWhatsAppPermissions(
+        Organization $organization,
+        string $channel,
+        bool $allowed,
+        bool $useSystemDefault,
+        bool $utilityAllowed = false,
+        bool $marketingAllowed = false,
+    ): OrganizationNotificationChannel {
+        if (! in_array($channel, ['whatsapp', 'sms'], true)) {
+            throw new \InvalidArgumentException('Only WhatsApp and SMS have organization-level channel permissions.');
+        }
+        if (! $allowed) {
+            // Keep default-channel access as an independent System Admin setting.
+            // The resolver still requires is_allowed before any channel can be used.
+            $utilityAllowed = false;
+            $marketingAllowed = false;
+        }
+        if ($channel !== 'whatsapp') {
+            $utilityAllowed = false;
+            $marketingAllowed = false;
+        }
+        return OrganizationNotificationChannel::query()->updateOrCreate(
+            ['organization_id' => $organization->getKey(), 'channel' => $channel],
+            [
+                'is_allowed' => $allowed,
+                'use_system_default' => $useSystemDefault,
+                'utility_allowed' => $utilityAllowed,
+                'marketing_allowed' => $marketingAllowed,
+            ],
+        );
+    }
+
     public function setSystemDefaultAccess(
         Organization $organization,
         string $channel,
         bool $allowed,
     ): OrganizationNotificationChannel {
+        $existing = OrganizationNotificationChannel::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('channel', $channel)
+            ->first();
+        // Store this permission independently from the feature flag. The channel
+        // resolver checks is_allowed as a separate prerequisite before delivery.
         return OrganizationNotificationChannel::query()->updateOrCreate(
-            [
-                'organization_id' => $organization->getKey(),
-                'channel' => $channel,
-            ],
+            ['organization_id' => $organization->getKey(), 'channel' => $channel],
             ['use_system_default' => $allowed],
         );
     }
@@ -117,8 +168,9 @@ class NotificationService
         string $dedupeKey,
         array $data = [],
         ?string $sourceModule = null,
+        string $serviceCategory = 'utility',
     ): ?array {
-        return DB::transaction(function () use ($organization, $user, $event, $title, $body, $dedupeKey, $data, $sourceModule): ?array {
+        return DB::transaction(function () use ($organization, $user, $event, $title, $body, $dedupeKey, $data, $sourceModule, $serviceCategory): ?array {
             $existing = Notification::query()
                 ->where('organization_id', $organization->getKey())
                 ->where('user_id', $user->getKey())
@@ -138,6 +190,7 @@ class NotificationService
                 body: $body,
                 data: array_merge($data, ['dedupe_key' => $dedupeKey]),
                 sourceModule: $sourceModule,
+                serviceCategory: $serviceCategory,
             );
         });
     }
@@ -187,21 +240,25 @@ class NotificationService
         string $body,
         array $data = [],
         ?string $sourceModule = null,
+        string $serviceCategory = 'utility',
     ): array {
-        return DB::transaction(function () use ($organization, $user, $event, $title, $body, $data, $sourceModule): array {
+        if (! in_array($serviceCategory, ['utility', 'marketing'], true)) {
+            throw new \InvalidArgumentException('Notification service category must be utility or marketing.');
+        }
+        return DB::transaction(function () use ($organization, $user, $event, $title, $body, $data, $sourceModule, $serviceCategory): array {
             $notification = Notification::query()->create([
                 'organization_id' => $organization->getKey(),
                 'user_id' => $user->getKey(),
                 'event' => $event,
                 'title' => $title,
                 'body' => $body,
-                'data' => $data,
+                'data' => array_merge($data, ['service_category' => $serviceCategory]),
                 'source_module' => $sourceModule,
             ]);
 
             $deliveries = [];
 
-            foreach ($this->resolver->resolveEnabledChannels($organization) as $channel => $configuration) {
+            foreach ($this->resolver->resolveEnabledChannels($organization, $serviceCategory) as $channel => $configuration) {
                 if (! $this->channels->has($channel)) {
                     continue;
                 }

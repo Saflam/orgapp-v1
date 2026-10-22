@@ -44,6 +44,11 @@ class FinancePeriod extends Model
         return $this->belongsTo(FinanceScope::class, 'finance_scope_id');
     }
 
+    public function journals(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\Modules\Finance\Models\FinanceJournal::class, 'finance_period_id');
+    }
+
     public function isOpen(): bool
     {
         return $this->status === FinancePeriodStatus::OPEN;

@@ -46,7 +46,11 @@ class MemberPaymentFinanceService
         $this->accounts->provisionDefaults($organization, $scope);
 
         $receivedAt = $payment->received_at ?? now();
-        $period = $this->periods->forDate($scope, $receivedAt);
+
+        // Financial periods are organization-wide. The journal and its accounts
+        // still use the collector's ledger scope (organization or unit).
+        $periodScope = $this->scopes->organizationScope($organization);
+        $period = $this->periods->forDate($periodScope, $receivedAt);
 
         if (! $period) {
             throw new \InvalidArgumentException(

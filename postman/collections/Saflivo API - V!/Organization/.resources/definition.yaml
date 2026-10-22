@@ -1,6 +1,0 @@
-$kind: collection
-auth:
-  type: bearer
-  credentials:
-    token: 2|OaKVWJlnqumyZxrzqpeJ7OydRpWYVSFjo2g6yto0376ad622
-order: 6000
