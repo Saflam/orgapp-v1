@@ -19,10 +19,82 @@ use libphonenumber\PhoneNumberUtil;
 class MembershipApplicationPageController
 {
     /** Render the authenticated applicant's membership application page. */
-    public function show(CurrentOrganization $currentOrganization)
+    public function show(Request $request, CurrentOrganization $currentOrganization)
     {
         $organization = $currentOrganization->get();
         $authenticatedUser = request()->user();
+
+        // Do not let an applicant start a duplicate application while an earlier
+        // submitted application is being processed (or after it was confirmed).
+        $activeApplicationStatuses = [
+            MembershipApplicationStatus::SUBMITTED,
+            MembershipApplicationStatus::VERIFIED,
+            MembershipApplicationStatus::REVIEWED,
+            MembershipApplicationStatus::APPROVED,
+            MembershipApplicationStatus::PENDING_PAYMENT,
+            MembershipApplicationStatus::PENDING_CONFIRMATION,
+            MembershipApplicationStatus::CONFIRMED,
+        ];
+
+        $existingApplication = MembershipApplication::query()
+            ->where('organization_id', $organization->id)
+            ->where('user_id', $authenticatedUser->id)
+            ->whereIn('status', array_map(
+                static fn (MembershipApplicationStatus $status): string => $status->value,
+                $activeApplicationStatuses,
+            ))
+            ->whereNotNull('submitted_at')
+            ->latest('submitted_at')
+            ->latest('id')
+            ->first();
+
+        if ($existingApplication) {
+            return response()
+                ->view('member::organization.membership-application-status', [
+                    'organization' => $organization,
+                    'application' => $existingApplication,
+                    'spouseRequest' => \Modules\Member\Models\SpouseRelationshipRequest::query()
+                        ->where('requester_application_id', $existingApplication->id)
+                        ->where('status', 'pending')
+                        ->latest('id')
+                        ->first(),
+                    'primaryColor' => data_get($organization, 'settings.theme.primary_color', '#174b3d'),
+                ])
+                ->header('Cache-Control', 'private, no-store');
+        }
+
+        // Always show the rejection outcome first, including its reason. When
+        // reapplication is allowed, the applicant must explicitly choose to
+        // start again rather than being sent straight into the form on login.
+        $rejectedApplication = MembershipApplication::query()
+            ->where('organization_id', $organization->id)
+            ->where('user_id', $authenticatedUser->id)
+            ->where('status', MembershipApplicationStatus::REJECTED->value)
+            ->whereNotNull('submitted_at')
+            ->latest('submitted_at')
+            ->latest('id')
+            ->first();
+
+        if ($rejectedApplication) {
+            $canReapply = $rejectedApplication->latestRejectionAllowsReapply();
+
+            if (! $canReapply || ! $request->boolean('reapply')) {
+                $latestRejection = $rejectedApplication->statusHistories()
+                    ->where('to_status', MembershipApplicationStatus::REJECTED->value)
+                    ->latest('id')
+                    ->first();
+
+                return response()
+                    ->view('member::organization.membership-application-status', [
+                        'organization' => $organization,
+                        'application' => $rejectedApplication,
+                        'rejectionReason' => $latestRejection?->notes,
+                        'canReapply' => $canReapply,
+                        'primaryColor' => data_get($organization, 'settings.theme.primary_color', '#174b3d'),
+                    ])
+                    ->header('Cache-Control', 'private, no-store');
+            }
+        }
 
         return response()
             ->view('member::organization.membership-apply', [

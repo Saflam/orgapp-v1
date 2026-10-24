@@ -26,6 +26,7 @@ class MembershipApplicationMediaController
             ->where('organization_id', $organization->id)
             ->findOrFail($applicationId);
 
+
         abort_unless($authorization->can(
             $request->user(),
             'membership.application.view',

@@ -275,6 +275,11 @@ Route::middleware([
             [MemberDependantController::class, 'update']
         )->name('member-dependant.update');
 
+        Route::delete(
+            'organizations/{organization}/members/{member}/dependants/{dependant}',
+            [MemberDependantController::class, 'destroy']
+        )->name('member-dependant.destroy');
+
         Route::post(
             'organizations/{organization}/members/{member}/dependants/{dependant}/convert',
             [MemberDependantController::class, 'convert']

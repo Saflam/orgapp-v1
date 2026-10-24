@@ -137,12 +137,22 @@ class MembershipApplicationWorkflowService
         User $actor,
         ?string $membershipNumber,
         string $startsAt,
+        ?string $endsAt = null,
     ): MembershipApplication {
+        $endsAt ??= now()->addYear()->toDateString();
+
+        if ($endsAt < $startsAt) {
+            throw ValidationException::withMessages([
+                'ends_at' => 'The membership expiry date must be on or after the membership start date.',
+            ]);
+        }
+
         return DB::transaction(function () use (
             $application,
             $actor,
             $membershipNumber,
             $startsAt,
+            $endsAt,
         ): MembershipApplication {
             // Serialize confirmation attempts for this application. The status
             // check must use the locked, current database row, not a stale model
@@ -190,6 +200,21 @@ class MembershipApplicationWorkflowService
                 $organizationMembership->update(['status' => 'active']);
             }
 
+            // Finalize account-level fields from the temporary application payload.
+            // Durable account name/phone live on users; profile fields live on user_details.
+            $userUpdates = [];
+            $fullName = collect([
+                $memberData['first_name'] ?? null,
+                $memberData['middle_name'] ?? null,
+                $memberData['last_name'] ?? null,
+            ])->filter(static fn ($part): bool => is_string($part) && trim($part) !== '')
+                ->map(static fn (string $part): string => trim($part))
+                ->implode(' ');
+
+            if ($fullName !== '') {
+                $userUpdates['name'] = $fullName;
+            }
+
             if (! empty($memberData['primary_phone'])) {
                 $normalizedPrimary = app(PhoneNumberNormalizer::class)->normalize(
                     (string) $memberData['primary_phone'],
@@ -199,15 +224,15 @@ class MembershipApplicationWorkflowService
                 if ($phoneOwner) {
                     throw ValidationException::withMessages(['primary_phone' => 'This phone number is already linked to another account.']);
                 }
+                $userUpdates['phone'] = $normalizedPrimary['phone_e164'];
+                $userUpdates['phone_verified_at'] = null;
+            }
+
+            if ($userUpdates !== []) {
                 try {
-                    User::query()->whereKey($application->user_id)->update([
-                        'phone' => $normalizedPrimary['phone_e164'],
-                        'phone_verified_at' => null,
-                    ]);
+                    User::query()->whereKey($application->user_id)->update($userUpdates);
                 } catch (QueryException $exception) {
-                    // The users.phone unique index is the final protection
-                    // against two concurrent confirmations claiming the same
-                    // number. Convert that race into a validation response.
+                    // The users.phone unique index is the final protection against races.
                     if (! $this->isPhoneUniqueConstraintViolation($exception)) {
                         throw $exception;
                     }
@@ -235,7 +260,7 @@ class MembershipApplicationWorkflowService
                     'profession' => $memberData['profession'] ?? null,
                     'company' => $memberData['company'] ?? null,
                     'company_address' => $memberData['company_address'] ?? null,
-                    'unit_id' => $memberData['unit_id'] ?? null,
+                    'unit_id' => data_get($memberData, 'preferred_unit_id') ?: data_get($memberData, 'unit_id'),
                     'joined_at' => $startsAt,
                     'metadata' => $memberData['metadata'] ?? [],
                 ],
@@ -286,6 +311,8 @@ class MembershipApplicationWorkflowService
             );
 
             $membership = $member->memberships()->latest('id')->firstOrFail();
+            $membership->ends_at = $endsAt;
+            $membership->save();
             $this->membershipLifecycleService->activate($membership);
 
             $application->paymentObligations()->update([
@@ -314,8 +341,29 @@ class MembershipApplicationWorkflowService
                 'allow_reapply' => false,
                 'metadata' => [
                     'membership_number' => $membershipNumber,
+                    'membership_ends_at' => $endsAt,
                 ],
             ]);
+
+            // Retain the application row as the review-history/payment foreign-key anchor,
+            // but remove temporary personal data and edit snapshots after successful confirmation.
+            $application->changes()->delete();
+            $application->update([
+                'data' => null,
+                'completed_steps' => null,
+                'current_step' => 1,
+            ]);
+
+            // The profile photo copy callback above runs first after commit. Identification
+            // documents are transferred by finalizeApplicationIdentifications().
+            $applicationIdForCleanup = $application->id;
+            DB::afterCommit(function () use ($applicationIdForCleanup): void {
+                $temporaryApplication = MembershipApplication::query()->find($applicationIdForCleanup);
+                if ($temporaryApplication !== null) {
+                    $temporaryApplication->clearMediaCollection('application-documents');
+                    $temporaryApplication->clearMediaCollection('profile-photo');
+                }
+            });
 
             $application = $application->refresh()->load([
                 'user.details',
@@ -352,7 +400,17 @@ class MembershipApplicationWorkflowService
         $relatedMemberIds = [];
         $selectedMemberId = data_get($application->data, 'spouse.member_id');
         if ($selectedMemberId !== null) {
-            $relatedMemberIds[] = (int) $selectedMemberId;
+            $acceptedRequest = \Modules\Member\Models\SpouseRelationshipRequest::query()
+                ->where('organization_id', $application->organization_id)
+                ->where('requester_application_id', $application->id)
+                ->where('target_member_id', (int) $selectedMemberId)
+                ->where('status', 'accepted')
+                ->first();
+
+            if ($acceptedRequest !== null) {
+                $acceptedRequest->update(['requester_member_id' => $member->id]);
+                $relatedMemberIds[] = (int) $selectedMemberId;
+            }
         }
 
         $sourceApplicationId = data_get($application->data, 'member.metadata.spouse_of_application_id');
@@ -388,8 +446,24 @@ class MembershipApplicationWorkflowService
                 continue;
             }
 
-            $this->ensureActiveSpouseRelationship($member->id, $relatedMember->id);
-            $this->ensureActiveSpouseRelationship($relatedMember->id, $member->id);
+            // Keep the directional writes in a deterministic order. When two
+            // spouse applications are confirmed concurrently, this reduces the
+            // chance that each transaction holds the opposite relationship row.
+            $relationshipPairs = [
+                [$member->id, $relatedMember->id],
+                [$relatedMember->id, $member->id],
+            ];
+            usort(
+                $relationshipPairs,
+                static fn (array $left, array $right): int => [$left[0], $left[1]] <=> [$right[0], $right[1]],
+            );
+
+            foreach ($relationshipPairs as [$relationshipMemberId, $relationshipRelatedMemberId]) {
+                $this->ensureActiveSpouseRelationship(
+                    (int) $relationshipMemberId,
+                    (int) $relationshipRelatedMemberId,
+                );
+            }
         }
     }
 

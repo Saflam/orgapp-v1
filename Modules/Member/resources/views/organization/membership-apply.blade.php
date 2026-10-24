@@ -75,7 +75,7 @@
                 </div>
                 <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                        <h1 class="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{{ ($spouseMode ?? false) ? ('Apply as ' . ($spouseApplicantName ?: ($authenticatedUser->name ?: 'Applicant')) . \"'s spouse\") : 'Become a member' }}</h1>
+                        <h1 class="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{{ ($spouseMode ?? false) ? ('Apply as ' . ($spouseApplicantName ?: ($authenticatedUser->name ?: 'Applicant')) . "'s spouse") : 'Become a member' }}</h1>
                         @if ($spouseMode ?? false)
                             <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
                                 Your application has been submitted. Complete a separate application for {{ $spouseApplicantName ?? 'your spouse' }}; the details below are prefilled where possible and can be changed.

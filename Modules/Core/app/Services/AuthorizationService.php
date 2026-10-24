@@ -50,6 +50,10 @@ class AuthorizationService
         if ($isOrganizationSuperAdmin) {
             return Permission::query()
                 ->where('code', $permissionCode)
+                ->where(function ($query) {
+                    $query->whereNull('module')
+                        ->orWhereRaw('LOWER(module) <> ?', ['finance']);
+                })
                 ->exists();
         }
 

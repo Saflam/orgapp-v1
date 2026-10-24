@@ -65,6 +65,15 @@ class MemberServiceProvider extends ModuleServiceProvider
         );
 
         $this->app->singleton(
+            \Modules\Member\Services\MemberProfileSectionExtensionRegistry::class,
+            function ($app) {
+                return new \Modules\Member\Services\MemberProfileSectionExtensionRegistry(
+                    $app->make(\Modules\Core\Services\OrganizationModuleService::class),
+                );
+            },
+        );
+
+        $this->app->singleton(
             \Modules\Member\Services\MembershipApplicationExtensionRegistry::class,
             function ($app) {
                 return new \Modules\Member\Services\MembershipApplicationExtensionRegistry(

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6995d93c6727241b1313591199b0d5b9",
+    "content-hash": "8219053ce5f908c0972a2f2354fbf451",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -838,6 +838,78 @@
                 }
             ],
             "time": "2025-03-06T22:45:56+00:00"
+        },
+        {
+            "name": "endroid/qr-code",
+            "version": "5.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/endroid/qr-code.git",
+                "reference": "393fec6c4cbdc1bd65570ac9d245704428010122"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/endroid/qr-code/zipball/393fec6c4cbdc1bd65570ac9d245704428010122",
+                "reference": "393fec6c4cbdc1bd65570ac9d245704428010122",
+                "shasum": ""
+            },
+            "require": {
+                "bacon/bacon-qr-code": "^3.0",
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "endroid/quality": "dev-main",
+                "ext-gd": "*",
+                "khanamiryan/qrcode-detector-decoder": "^2.0.2",
+                "setasign/fpdf": "^1.8.2"
+            },
+            "suggest": {
+                "ext-gd": "Enables you to write PNG images",
+                "khanamiryan/qrcode-detector-decoder": "Enables you to use the image validator",
+                "roave/security-advisories": "Makes sure package versions with known security issues are not installed",
+                "setasign/fpdf": "Enables you to use the PDF writer"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "5.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Endroid\\QrCode\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Jeroen van den Enden",
+                    "email": "info@endroid.nl"
+                }
+            ],
+            "description": "Endroid QR Code",
+            "homepage": "https://github.com/endroid/qr-code",
+            "keywords": [
+                "code",
+                "endroid",
+                "php",
+                "qr",
+                "qrcode"
+            ],
+            "support": {
+                "issues": "https://github.com/endroid/qr-code/issues",
+                "source": "https://github.com/endroid/qr-code/tree/5.1.0"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/endroid",
+                    "type": "github"
+                }
+            ],
+            "time": "2024-09-08T08:52:55+00:00"
         },
         {
             "name": "fruitcake/php-cors",
@@ -2561,93 +2633,6 @@
                 }
             ],
             "time": "2026-03-08T20:05:35+00:00"
-        },
-        {
-            "name": "linkxtr/laravel-qrcode",
-            "version": "v3.2.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/Linkxtr/laravel-qrcode.git",
-                "reference": "cd701e8055d661b56d42fb37fcdeac0857a0015a"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/Linkxtr/laravel-qrcode/zipball/cd701e8055d661b56d42fb37fcdeac0857a0015a",
-                "reference": "cd701e8055d661b56d42fb37fcdeac0857a0015a",
-                "shasum": ""
-            },
-            "require": {
-                "bacon/bacon-qr-code": "^3.0",
-                "illuminate/contracts": "^12.0|^13.0",
-                "illuminate/support": "^12.0|^13.0",
-                "php": "^8.2"
-            },
-            "require-dev": {
-                "chillerlan/php-qrcode": "^6.0",
-                "laravel/pint": "^1.0",
-                "orchestra/testbench": "^10.0|^11.0",
-                "pestphp/pest": "^3.0|^4.0",
-                "pestphp/pest-plugin-laravel": "^3.0|^4.0",
-                "pestphp/pest-plugin-type-coverage": "^3.0|^4.0",
-                "phpstan/phpstan": "^2.0",
-                "rector/rector": "^1.0|^2.0",
-                "spatie/invade": "^2.1"
-            },
-            "suggest": {
-                "ext-gd": "Required to generate PNG and WebP images via GD",
-                "ext-imagick": "Required to generate PNG and WebP images via Imagick"
-            },
-            "type": "library",
-            "extra": {
-                "laravel": {
-                    "aliases": {
-                        "QrCode": "Linkxtr\\QrCode\\Facades\\QrCode"
-                    },
-                    "providers": [
-                        "Linkxtr\\QrCode\\QrCodeServiceProvider"
-                    ]
-                },
-                "branch-alias": {
-                    "dev-main": "3.x-dev"
-                }
-            },
-            "autoload": {
-                "files": [
-                    "src/helpers.php"
-                ],
-                "psr-4": {
-                    "Linkxtr\\QrCode\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Khaled Sadek",
-                    "email": "khaledsadek286@gmail.com",
-                    "homepage": "https://github.com/khaled-sadek"
-                }
-            ],
-            "description": "A clean, modern, and easy-to-use QR code generator for Laravel",
-            "keywords": [
-                "bacon-qr-code",
-                "laravel",
-                "payment",
-                "png",
-                "qr",
-                "qr-code",
-                "qrcode",
-                "svg",
-                "vCard",
-                "wifi"
-            ],
-            "support": {
-                "issues": "https://github.com/Linkxtr/laravel-qrcode/issues",
-                "source": "https://github.com/Linkxtr/laravel-qrcode/tree/v3.2.0"
-            },
-            "time": "2026-07-13T19:22:21+00:00"
         },
         {
             "name": "livewire/livewire",

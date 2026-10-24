@@ -106,6 +106,33 @@ class MemberDependantController extends Controller
         return new MemberDependantResource($dependant);
     }
 
+    public function destroy(
+        Organization $organization,
+        Member $member,
+        MemberDependant $dependant,
+    ): JsonResponse {
+        $this->ensureMemberBelongsToOrganization($organization, $member);
+        $this->ensureDependantBelongsToOrganization($organization, $dependant);
+        $this->ensureMemberOwnsDependant($member, $dependant);
+
+        if ($dependant->converted_member_id !== null) {
+            return response()->json([
+                'message' => 'A dependant who has become a member cannot be removed here.',
+            ], 422);
+        }
+
+        $relationship = $member->dependantRelationships()
+            ->where('dependant_id', $dependant->id)
+            ->whereNull('ended_at')
+            ->first();
+
+        if ($relationship) {
+            $relationship->update(['ended_at' => now()->toDateString()]);
+        }
+
+        return response()->json(['message' => 'Dependant removed from your active family list.']);
+    }
+
     public function convert(
         Organization $organization,
         Member $member,

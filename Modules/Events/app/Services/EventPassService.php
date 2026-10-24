@@ -68,10 +68,7 @@ class EventPassService
             try {
                 // Encrypt the rendered QR SVG at rest. The raw bearer token and QR contents
                 // are never included in the queued job payload.
-                $qrSvg = (string) \QrCode::margin(1)
-                    ->color(0, 0, 0)
-                    ->backgroundColor(255, 255, 255, 1)
-                    ->generate($token);
+                $qrSvg = QrCodeSvgGenerator::generate($token);
 
                 $stored = Storage::disk('local')->put($qrPath, Crypt::encryptString($qrSvg));
                 if (! $stored) {
@@ -199,10 +196,7 @@ class EventPassService
 
         $qrPath = 'events/pass-delivery/'.Str::uuid().'.enc';
         try {
-            $qrSvg = (string) \QrCode::margin(1)
-                ->color(0, 0, 0)
-                ->backgroundColor(255, 255, 255, 1)
-                ->generate($newToken);
+            $qrSvg = QrCodeSvgGenerator::generate($newToken);
 
             if (! Storage::disk('local')->put($qrPath, Crypt::encryptString($qrSvg))) {
                 throw new \RuntimeException('Unable to store the encrypted event pass QR artifact.');

@@ -14,10 +14,14 @@ class SendScheduledMemberNotifications extends Command
     public function handle(MemberScheduledNotificationService $service): int
     {
         $subscriptionCount = $service->sendSubscriptionReminders();
+        $membershipExpiryCount = $service->sendMembershipExpiryReminders();
         $identificationCount = $service->sendIdentificationExpiryReminders();
+        $dormantCount = $service->markExpiredMembershipsDormant();
 
         $this->info("Sent {$subscriptionCount} subscription reminder notification(s).");
+        $this->info("Sent {$membershipExpiryCount} membership expiry reminder notification(s).");
         $this->info("Sent {$identificationCount} identification expiry notification(s).");
+        $this->info("Moved {$dormantCount} expired membership(s) to dormant.");
 
         return self::SUCCESS;
     }

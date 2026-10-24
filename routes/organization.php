@@ -2,9 +2,6 @@
 
 use App\Support\Organization\CurrentOrganization;
 use App\Http\Controllers\Auth\OrganizationRegistrationController;
-use Modules\Member\Http\Controllers\Api\MembershipApplicationController;
-use Modules\Member\Http\Controllers\Web\MembershipApplicationPageController;
-use Modules\Member\Http\Middleware\UseAuthenticatedApplicant;
 use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use App\Models\OrganizationMembership;
@@ -173,91 +170,6 @@ Route::middleware(['organization'])->group(function () {
                     ->exists(),
             ])->header('Cache-Control', 'private, no-store');
         })->name('organization.profile');
-
-        Route::get('/membership/apply', function (CurrentOrganization $currentOrganization) {
-            $organization = $currentOrganization->get();
-            $branding = data_get($organization->settings, 'branding', []);
-            $primaryColor = data_get($branding, 'primary_color', '#174b3d');
-            $accentColor = data_get($branding, 'accent_color', '#d9a441');
-
-            if (! is_string($primaryColor) || ! preg_match('/^#[0-9a-fA-F]{6}$/', $primaryColor)) {
-                $primaryColor = '#174b3d';
-            }
-
-            if (! is_string($accentColor) || ! preg_match('/^#[0-9a-fA-F]{6}$/', $accentColor)) {
-                $accentColor = '#d9a441';
-            }
-
-            $existingApplication = MembershipApplication::query()
-                ->where('organization_id', $organization->id)
-                ->where('user_id', auth()->id())
-                ->latest('id')->first();
-            if ($existingApplication && $existingApplication->status !== MembershipApplicationStatus::DRAFT && ! ($existingApplication->status === MembershipApplicationStatus::REJECTED && $existingApplication->latestRejectionAllowsReapply())) {
-                return response()->view('organization.membership-application-status', [
-                    'organization' => $organization,
-                    'application' => $existingApplication,
-                    'primaryColor' => $primaryColor,
-                ])->header('Cache-Control', 'private, no-store');
-            }
-
-            return response()->view('organization.membership-apply', [
-                'organization' => $organization,
-                'primaryColor' => $primaryColor,
-                'accentColor' => $accentColor,
-                'authenticatedUser' => auth()->user(),
-            ])->header('Cache-Control', 'private, no-store');
-        })->name('organization.membership.apply');
-
-        // Self-service applicants are not necessarily assigned an organization role yet.
-        // Authentication, tenant resolution, module availability, and the forced user_id
-        // middleware still apply to the browser submission endpoints.
-        Route::middleware(['module:Member'])->group(function (): void {
-            Route::get('/membership/apply/configuration', [MembershipApplicationPageController::class, 'configuration'])
-                ->name('organization.membership.apply.configuration');
-            Route::post('/membership/apply/draft', [MembershipApplicationPageController::class, 'saveDraft'])
-                ->name('organization.membership.apply.draft');
-
-            Route::get('/membership/apply/spouse-search', [MembershipApplicationController::class, 'searchSpouseMembers'])
-                ->name('organization.membership.apply.spouse-search');
-
-            Route::get('/membership/apply/spouse', function (\Illuminate\Http\Request $request, CurrentOrganization $currentOrganization) {
-                $organization = $currentOrganization->get();
-                $source = MembershipApplication::query()
-                    ->whereKey((int) $request->query('source_application'))
-                    ->where('organization_id', $organization->id)
-                    ->where('user_id', auth()->id())
-                    ->firstOrFail();
-                $branding = data_get($organization->settings, 'branding', []);
-                $primaryColor = data_get($branding, 'primary_color', '#174b3d');
-                $accentColor = data_get($branding, 'accent_color', '#d9a441');
-                return response()->view('organization.membership-apply', [
-                    'organization' => $organization,
-                    'primaryColor' => is_string($primaryColor) && preg_match('/^#[0-9a-fA-F]{6}$/', $primaryColor) ? $primaryColor : '#174b3d',
-                    'accentColor' => is_string($accentColor) && preg_match('/^#[0-9a-fA-F]{6}$/', $accentColor) ? $accentColor : '#d9a441',
-                    'authenticatedUser' => auth()->user(),
-                    'spouseMode' => true,
-                    'spousePrefill' => $source->data['addresses'] ?? [],
-                ])->header('Cache-Control', 'private, no-store');
-            })->name('organization.membership.apply.spouse');
-
-            Route::post('/membership/apply/spouse', [MembershipApplicationController::class, 'storeSpouse'])
-                ->name('organization.membership.apply.spouse.submit');
-
-            Route::post('/membership/apply', [MembershipApplicationController::class, 'store'])
-                ->middleware(UseAuthenticatedApplicant::class)
-                ->name('organization.membership.apply.submit');
-        });
-    });
-
-    // Member-only profile and dashboard endpoints require active organization access.
-    // EnsureOrganizationAccess returns 401 for guests and 403 for another org's user.
-    Route::middleware(['auth', 'organization.access'])->group(function () {
-        Route::get('/member/profile', function (CurrentOrganization $currentOrganization) {
-            return response()->view('organization.member-profile', [
-                'organization' => $currentOrganization->get(),
-                'user' => auth()->user(),
-            ]);
-        })->name('organization.member.profile');
 
     });
 

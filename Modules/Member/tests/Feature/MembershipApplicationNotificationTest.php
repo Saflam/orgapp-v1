@@ -19,12 +19,68 @@ use Modules\Member\Events\MembershipApplication\MembershipConfirmed;
 use Modules\Member\Events\MembershipApplication\MembershipPaymentRequired;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Models\MembershipApplication;
+use Modules\Member\Models\MembershipApplicationStatusHistory;
 use Modules\Member\Models\MembershipType;
 use Tests\TestCase;
 
 class MembershipApplicationNotificationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_each_new_rejection_of_a_reapplied_application_sends_a_fresh_notification(): void
+    {
+        Queue::fake();
+
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create();
+        $membershipType = MembershipType::create([
+            'organization_id' => $organization->id,
+            'name' => 'Regular',
+            'code' => 'REG-' . uniqid(),
+            'is_active' => true,
+            'metadata' => [],
+        ]);
+        $application = MembershipApplication::create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_type_id' => $membershipType->id,
+            'status' => MembershipApplicationStatus::REJECTED,
+            'current_step' => 3,
+            'completed_steps' => [1, 2, 3],
+            'data' => [],
+            'submitted_at' => now(),
+        ]);
+
+        app(NotificationChannelRegistry::class)->register(new FakeMemberNotificationChannel('email'));
+        app(NotificationService::class)->configureChannel($organization, 'email', true);
+
+        $firstRejection = $application->statusHistories()->create([
+            'from_status' => MembershipApplicationStatus::SUBMITTED->value,
+            'to_status' => MembershipApplicationStatus::REJECTED->value,
+            'actor_user_id' => $user->id,
+            'notes' => 'First rejection reason.',
+            'allow_reapply' => true,
+            'metadata' => [],
+        ]);
+        event(new MembershipApplicationRejected($application));
+        event(new MembershipApplicationRejected($application));
+
+        $application->statusHistories()->create([
+            'from_status' => MembershipApplicationStatus::SUBMITTED->value,
+            'to_status' => MembershipApplicationStatus::REJECTED->value,
+            'actor_user_id' => $user->id,
+            'notes' => 'Second rejection reason.',
+            'allow_reapply' => false,
+            'metadata' => [],
+        ]);
+        event(new MembershipApplicationRejected($application));
+
+        $this->assertDatabaseCount('notifications', 2);
+        $this->assertDatabaseHas('notifications', [
+            'event' => 'membership.application.rejected',
+            'body' => 'Your membership application was rejected. Reason: Second rejection reason.',
+        ]);
+    }
 
     public function test_membership_application_lifecycle_events_create_notifications(): void
     {

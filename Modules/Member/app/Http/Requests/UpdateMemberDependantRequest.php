@@ -32,13 +32,14 @@ class UpdateMemberDependantRequest extends FormRequest
 
             'date_of_birth' => [
                 'sometimes',
-                'nullable',
+                'required',
                 'date',
+                'before_or_equal:today',
             ],
 
             'gender' => [
                 'sometimes',
-                'nullable',
+                'required',
                 'string',
                 'max:50',
             ],

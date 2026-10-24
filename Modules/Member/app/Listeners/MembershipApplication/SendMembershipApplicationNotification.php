@@ -77,13 +77,29 @@ class SendMembershipApplicationNotification
             'status' => $application->status->value,
         ];
 
+        // A rejected application can be re-submitted using the same row. Include
+        // its rejection-history ID in the dedupe key so each new rejection sends
+        // a fresh notification, while duplicate dispatches for one rejection stay deduplicated.
+        $eventVersion = '';
+        if ($event instanceof MembershipApplicationRejected) {
+            $rejectionHistoryId = $application->statusHistories()
+                ->where('to_status', MembershipApplicationStatus::REJECTED->value)
+                ->latest('id')
+                ->value('id');
+            $eventVersion = ':rejection:' . ($rejectionHistoryId ?? (string) $application->updated_at?->timestamp);
+            $notificationData['rejection_reason'] = $application->statusHistories()
+                ->where('to_status', MembershipApplicationStatus::REJECTED->value)
+                ->latest('id')
+                ->value('notes');
+        }
+
         $this->notifications->notifyOnce(
             organization: $organization,
             user: $user,
             event: $eventName,
             title: $title,
             body: $body,
-            dedupeKey: "membership-application:{$application->id}:{$eventName}:user:{$user->id}",
+            dedupeKey: "membership-application:{$application->id}:{$eventName}{$eventVersion}:user:{$user->id}",
             data: $notificationData,
             sourceModule: 'Member',
         );

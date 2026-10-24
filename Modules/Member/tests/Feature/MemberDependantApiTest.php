@@ -75,6 +75,8 @@ class MemberDependantApiTest extends TestCase
             [
                 'first_name' => 'Mary',
                 'last_name' => 'Smith',
+                'date_of_birth' => '1990-05-10',
+                'gender' => 'female',
             ],
         );
 

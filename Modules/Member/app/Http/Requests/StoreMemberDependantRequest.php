@@ -28,12 +28,13 @@ class StoreMemberDependantRequest extends FormRequest
             ],
 
             'date_of_birth' => [
-                'nullable',
+                'required',
                 'date',
+                'before_or_equal:today',
             ],
 
             'gender' => [
-                'nullable',
+                'required',
                 'string',
                 'max:50',
             ],

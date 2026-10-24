@@ -11,11 +11,11 @@
     "require": {
         "php": "^8.3",
         "cviebrock/eloquent-sluggable": "^13.0",
+        "endroid/qr-code": "5.1",
         "giggsey/libphonenumber-for-php": "^9.0",
         "laravel/framework": "^13.17",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
-        "linkxtr/laravel-qrcode": "3.2",
         "livewire/livewire": "^4.4",
         "nwidart/laravel-modules": "^13.0",
         "spatie/laravel-medialibrary": "^11.23"

@@ -57,6 +57,11 @@ class MembershipApplicationController
     public function store(StoreMembershipApplicationRequest $request): JsonResponse
     {
         $organization = $this->organization();
+
+        // Capture the uploaded file before application submission performs any
+        // processing that could make PHP's temporary upload path unavailable.
+        $profilePhoto = $request->file('profile_photo');
+
         $validated = $request->validated();
         $user = \App\Models\User::query()->findOrFail($validated['user_id']);
         if (! empty($validated['primary_phone'])) {
@@ -129,8 +134,50 @@ class MembershipApplicationController
             stepCount: count($steps),
         );
 
-        if ($request->hasFile('profile_photo')) {
-            $application->addMediaFromRequest('profile_photo')->toMediaCollection('profile-photo');
+        // Use the captured UploadedFile directly instead of resolving it from
+        // the request again after the application has been submitted.
+        if ($profilePhoto !== null && $profilePhoto->isValid()) {
+            $application->addMedia($profilePhoto)->toMediaCollection('profile-photo');
+        }
+
+        // Selecting an existing spouse is a request, not an established relationship.
+        $selectedSpouseMemberId = data_get($validated, 'spouse.member_id');
+        if (data_get($validated, 'spouse.needed') === 'yes'
+            && data_get($validated, 'spouse.existing') === 'yes'
+            && $selectedSpouseMemberId !== null) {
+            $targetMember = \Modules\Member\Models\Member::query()
+                ->where('organization_id', $organization->id)
+                ->with('user')
+                ->findOrFail((int) $selectedSpouseMemberId);
+
+            if ((int) $targetMember->user_id === (int) $user->id) {
+                throw ValidationException::withMessages(['spouse.member_id' => 'You cannot select yourself as your spouse.']);
+            }
+
+            $alreadyPaired = \Modules\Member\Models\MemberRelationship::query()
+                ->where('relationship_type', 'spouse')
+                ->whereNull('ended_at')
+                ->where(fn ($query) => $query->where('member_id', $targetMember->id)->orWhere('related_member_id', $targetMember->id))
+                ->exists();
+            if ($alreadyPaired) {
+                throw ValidationException::withMessages(['spouse.member_id' => 'The selected member already has an active spouse relationship.']);
+            }
+
+            $spouseRequest = \Modules\Member\Models\SpouseRelationshipRequest::query()->firstOrCreate(
+                [
+                    'requester_application_id' => $application->id,
+                    'target_member_id' => $targetMember->id,
+                    'status' => 'pending',
+                ],
+                [
+                    'organization_id' => $organization->id,
+                    'metadata' => ['source' => 'membership_application'],
+                ],
+            );
+
+            if ($spouseRequest->wasRecentlyCreated && $targetMember->user) {
+                $targetMember->user->notify(new \Modules\Member\Notifications\SpouseRelationshipRequested($spouseRequest));
+            }
         }
 
         return response()->json(
@@ -269,16 +316,33 @@ class MembershipApplicationController
             return response()->json(['data' => []])->header('Cache-Control', 'private, no-store');
         }
 
+        $ownMemberId = \Modules\Member\Models\Member::query()
+            ->where('organization_id', $organization->id)
+            ->where('user_id', request()->user()?->id)
+            ->value('id');
+
         $members = \Modules\Member\Models\Member::query()
             ->with('user')
             ->where('organization_id', $organization->id)
+            ->when($ownMemberId !== null, fn ($builder) => $builder->whereKeyNot((int) $ownMemberId))
             ->whereHas('memberships', fn ($builder) => $builder->where('status', 'active'))
+            ->whereHas('user')
             ->where(function ($search) use ($query): void {
                 $search->whereHas('user', function ($builder) use ($query): void {
                     $builder->where('name', 'like', "%{$query}%")
                         ->orWhere('email', 'like', "%{$query}%")
                         ->orWhere('phone', 'like', "%{$query}%");
                 })->orWhere('membership_number', 'like', "%{$query}%");
+            })
+            ->whereNotExists(function ($relationships): void {
+                $relationships->selectRaw('1')
+                    ->from('member_relationships')
+                    ->whereNull('ended_at')
+                    ->whereIn('relationship_type', ['spouse', 'spouse_of'])
+                    ->where(function ($pair): void {
+                        $pair->whereColumn('member_relationships.member_id', 'members.id')
+                            ->orWhereColumn('member_relationships.related_member_id', 'members.id');
+                    });
             })
             ->limit(10)
             ->get();
@@ -287,8 +351,11 @@ class MembershipApplicationController
             'id' => $member->id,
             'name' => $member->user?->name ?? '',
             'email' => $member->user?->email ?? '',
+            'phone' => $member->user?->phone ?? '',
             'membership_number' => $member->membership_number,
-            'photo_url' => method_exists($member->user, 'getFirstMediaUrl') ? ($member->user->getFirstMediaUrl('profile-photo') ?: null) : null,
+            'photo_url' => $member->user && method_exists($member->user, 'getFirstMediaUrl')
+                ? ($member->user->getFirstMediaUrl('profile-photo') ?: null)
+                : null,
         ])->values()])->header('Cache-Control', 'private, no-store');
     }
 
@@ -434,6 +501,7 @@ class MembershipApplicationController
             actor: $request->user(),
             membershipNumber: $validated['membership_number'] ?? null,
             startsAt: $validated['starts_at'],
+            endsAt: $validated['ends_at'] ?? now()->addYear()->toDateString(),
         );
 
         return response()->json(new MembershipApplicationResource($application));

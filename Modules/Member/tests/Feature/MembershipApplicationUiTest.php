@@ -12,6 +12,7 @@ use Modules\Core\Services\OrganizationIdentificationService;
 use Modules\Core\Models\Organization;
 use Modules\Member\Models\MembershipType;
 use Modules\Member\Models\MembershipApplication;
+use Modules\Member\Models\MembershipApplicationStatusHistory;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Tests\Concerns\ActsAsMemberOrganizationUser;
 use Tests\TestCase;
@@ -89,6 +90,81 @@ class MembershipApplicationUiTest extends TestCase
             ->assertOk()
             ->assertSee('Application in Progress')
             ->assertDontSee('Apply Membership');
+    }
+
+    public function test_rejected_application_shows_reason_and_explicit_reapply_action_when_allowed(): void
+    {
+        $organization = Organization::factory()->create([
+            'slug' => 'apply-rejected-reapply-' . uniqid(),
+        ]);
+        $this->actAsMemberOrganizationAdmin($organization);
+        $user = auth()->user();
+
+        $application = MembershipApplication::query()->create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_type_id' => null,
+            'status' => MembershipApplicationStatus::REJECTED,
+            'current_step' => 5,
+            'completed_steps' => [1, 2, 3, 4, 5],
+            'data' => ['member' => ['first_name' => 'Old', 'last_name' => 'Details']],
+            'submitted_at' => now(),
+        ]);
+        $application->statusHistories()->create([
+            'from_status' => MembershipApplicationStatus::SUBMITTED->value,
+            'to_status' => MembershipApplicationStatus::REJECTED->value,
+            'actor_user_id' => $user->id,
+            'notes' => 'Please upload a clearer proof of address.',
+            'allow_reapply' => true,
+            'metadata' => [],
+        ]);
+
+        $this->get($this->organizationUrl($organization, '/membership/apply'))
+            ->assertOk()
+            ->assertSee('Your membership application was rejected')
+            ->assertSee('Please upload a clearer proof of address.')
+            ->assertSee('Re-apply for membership')
+            ->assertSee('reapply=1', false)
+            ->assertDontSee('data-membership-application', false);
+
+        $this->get($this->organizationUrl($organization, '/membership/apply?reapply=1'))
+            ->assertOk()
+            ->assertSee('data-membership-application', false);
+    }
+
+    public function test_rejected_application_without_reapply_permission_shows_reason_without_reapply_button(): void
+    {
+        $organization = Organization::factory()->create([
+            'slug' => 'apply-rejected-no-reapply-' . uniqid(),
+        ]);
+        $this->actAsMemberOrganizationAdmin($organization);
+        $user = auth()->user();
+
+        $application = MembershipApplication::query()->create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'membership_type_id' => null,
+            'status' => MembershipApplicationStatus::REJECTED,
+            'current_step' => 5,
+            'completed_steps' => [1, 2, 3, 4, 5],
+            'data' => [],
+            'submitted_at' => now(),
+        ]);
+        $application->statusHistories()->create([
+            'from_status' => MembershipApplicationStatus::SUBMITTED->value,
+            'to_status' => MembershipApplicationStatus::REJECTED->value,
+            'actor_user_id' => $user->id,
+            'notes' => 'This application does not meet the eligibility criteria.',
+            'allow_reapply' => false,
+            'metadata' => [],
+        ]);
+
+        $this->get($this->organizationUrl($organization, '/membership/apply'))
+            ->assertOk()
+            ->assertSee('Your membership application was rejected')
+            ->assertSee('This application does not meet the eligibility criteria.')
+            ->assertDontSee('Re-apply for membership')
+            ->assertDontSee('data-membership-application', false);
     }
 
     public function test_browser_submission_rejects_a_future_date_of_birth(): void

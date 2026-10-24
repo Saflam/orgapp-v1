@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div><h1>WhatsApp settings</h1><div class="muted">Configure Saflivo's default Meta Cloud API channel and approve organization service access.</div></div>
-        <div class="actions page-head-actions"><a class="btn secondary" href="/system/whatsapp-message-history">Message history</a><a class="btn secondary" href="/system/whatsapp-templates">Template guide</a></div>
+        <div class="actions page-head-actions"><a class="btn secondary" href="/system/whatsapp-message-history">Message history</a><a class="btn secondary" href="/system/whatsapp-templates">WhatsApp template guide</a></div>
     </div>
     @if ($successMessage !== '')<div class="notice" role="status">{{ $successMessage }}</div>@endif
     @if ($connectionTestMessage !== '')<div class="{{ $connectionTestStatus === 'success' ? 'notice' : 'error' }}" role="status"><strong>{{ $connectionTestStatus === 'success' ? 'Connection test passed' : 'Connection test failed' }}:</strong> {{ $connectionTestMessage }}@if ($connectionTestPhoneNumber) <div>Meta phone: {{ $connectionTestPhoneNumber }}@if ($connectionTestVerifiedName) · Verified name: {{ $connectionTestVerifiedName }}@endif</div>@endif</div>@endif

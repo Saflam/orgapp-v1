@@ -21,6 +21,7 @@ class OrganizationSelfSettings extends Component
     public string $timezone = 'Asia/Kolkata';
     public string $currency = 'INR';
     public string $theme = 'system';
+    public string $membershipExpiryReminderDays = '30,7,1';
     public string $successMessage = '';
     public $logo = null;
     public $favicon = null;
@@ -35,6 +36,11 @@ class OrganizationSelfSettings extends Component
         $this->timezone = $this->organization->timezone ?: 'Asia/Kolkata';
         $this->currency = $this->organization->currency ?: 'INR';
         $this->theme = (string) $settings->get($this->organization, 'ui.theme', 'system');
+        $this->membershipExpiryReminderDays = (string) $settings->get(
+            $this->organization,
+            'membership.expiry_reminder_days',
+            '30,7,1',
+        );
         $this->refreshBrandingUrls($settings);
     }
 
@@ -47,12 +53,39 @@ class OrganizationSelfSettings extends Component
             'timezone' => ['required', 'timezone'],
             'currency' => ['required', 'string', 'size:3'],
             'theme' => ['required', 'in:light,dark,system'],
+            'membershipExpiryReminderDays' => ['required', 'string', 'max:100'],
         ]);
 
+        $reminderDays = collect(explode(',', $validated['membershipExpiryReminderDays']))
+            ->map(static fn (string $day): string => trim($day))
+            ->filter(static fn (string $day): bool => $day !== '')
+            ->values();
+
+        if ($reminderDays->isEmpty()) {
+            $this->addError('membershipExpiryReminderDays', 'Enter at least one reminder day, such as 30,7,1.');
+            return;
+        }
+
+        foreach ($reminderDays as $day) {
+            if (! ctype_digit($day) || (int) $day > 3650) {
+                $this->addError('membershipExpiryReminderDays', 'Use comma-separated whole numbers from 0 to 3650.');
+                return;
+            }
+        }
+
+        $normalizedReminderDays = $reminderDays
+            ->map(static fn (string $day): int => (int) $day)
+            ->unique()
+            ->sortDesc()
+            ->values()
+            ->implode(',');
+
         $theme = $validated['theme'];
-        unset($validated['theme']);
+        unset($validated['theme'], $validated['membershipExpiryReminderDays']);
         $this->organization->update($validated);
         $settings->set($this->organization, 'ui.theme', $theme);
+        $settings->set($this->organization, 'membership.expiry_reminder_days', $normalizedReminderDays);
+        $this->membershipExpiryReminderDays = $normalizedReminderDays;
         $this->successMessage = 'Organization settings saved successfully.';
     }
 

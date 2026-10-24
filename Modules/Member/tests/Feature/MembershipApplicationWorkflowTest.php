@@ -445,6 +445,14 @@ class MembershipApplicationWorkflowTest extends TestCase
         $application->update([
             'data' => array_replace_recursive($application->data, [
                 'member' => [
+                    'first_name' => 'Asha',
+                    'middle_name' => 'M',
+                    'last_name' => 'Nair',
+                    'primary_phone' => '9876501234',
+                    'primary_phone_country_iso2' => 'IN',
+                    'preferred_unit_id' => Unit::factory()->create(['organization_id' => $application->organization_id])->id,
+                    'gender' => 'female',
+                    'blood_group' => 'O+',
                     'phone_numbers' => [[
                         'type' => 'whatsapp',
                         'phone' => '9876543210',
@@ -484,8 +492,32 @@ class MembershipApplicationWorkflowTest extends TestCase
         $this->assertSame(MembershipApplicationStatus::CONFIRMED, $confirmed->status);
 
         $member = \Modules\Member\Models\Member::query()->firstOrFail();
+        $this->assertSame(
+            now()->addYear()->toDateString(),
+            $member->memberships()->latest('id')->firstOrFail()->ends_at->toDateString(),
+        );
         $this->assertSame('MEM-TEST-001', $member->membership_number);
         $this->assertSame($member->id, $confirmed->member_id);
+        $this->assertNotNull($member->unit_id);
+        $this->assertSame('Asha M Nair', $actor->refresh()->name);
+        $this->assertSame('+919876501234', $actor->refresh()->phone);
+        $this->assertDatabaseHas('user_details', [
+            'user_id' => $actor->id,
+            'first_name' => 'Asha',
+            'middle_name' => 'M',
+            'last_name' => 'Nair',
+            'gender' => 'female',
+            'blood_group' => 'O+',
+        ]);
+        $this->assertNull($confirmed->data);
+        $this->assertNull($confirmed->completed_steps);
+        $this->assertSame(1, $confirmed->current_step);
+        $this->assertSame(0, $confirmed->changes()->count());
+        $this->assertDatabaseHas('membership_application_status_histories', [
+            'membership_application_id' => $confirmed->id,
+            'to_status' => MembershipApplicationStatus::CONFIRMED->value,
+            'actor_user_id' => $actor->id,
+        ]);
         $this->assertDatabaseHas('memberships', [
             'member_id' => $member->id,
             'status' => MembershipStatus::ACTIVE->value,
@@ -539,6 +571,95 @@ class MembershipApplicationWorkflowTest extends TestCase
 
         $this->assertSame('SDA-0001', $confirmed->member->membership_number);
         $this->assertSame(2, Organization::query()->findOrFail($organization->id)->settings['membership_numbering']['next_sequence']);
+    }
+
+    public function test_confirmation_failure_rolls_back_all_database_changes_and_can_be_retried(): void
+    {
+        [$application, $actor] = $this->applicationContext();
+        $this->configureMandatoryCharge($application, $application->membership_type_id);
+        $workflow = app(MembershipApplicationWorkflowService::class);
+
+        foreach ([
+            MembershipApplicationStatus::VERIFIED,
+            MembershipApplicationStatus::REVIEWED,
+            MembershipApplicationStatus::APPROVED,
+            MembershipApplicationStatus::PENDING_PAYMENT,
+        ] as $status) {
+            $workflow->transition($application->refresh(), $status, $actor);
+        }
+
+        app(\Modules\Member\Services\MemberPaymentService::class)
+            ->markApplicationPaid(
+                $application->refresh(),
+                $actor,
+                'organization',
+                $application->organization_id,
+            );
+
+        $this->assertSame(
+            MembershipApplicationStatus::PENDING_CONFIRMATION,
+            $application->refresh()->status,
+        );
+
+        $failingLifecycle = \Mockery::mock(\Modules\Member\Services\MembershipLifecycleService::class);
+        $failingLifecycle->shouldReceive('activate')
+            ->once()
+            ->andThrow(new \RuntimeException('Simulated activation failure.'));
+
+        $this->app->instance(\Modules\Member\Services\MembershipLifecycleService::class, $failingLifecycle);
+        $this->app->forgetInstance(MembershipApplicationWorkflowService::class);
+
+        try {
+            app(MembershipApplicationWorkflowService::class)->confirm(
+                application: $application->refresh(),
+                actor: $actor,
+                membershipNumber: null,
+                startsAt: '2026-10-05',
+            );
+            $this->fail('Confirmation should fail when membership activation throws.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Simulated activation failure.', $exception->getMessage());
+        }
+
+        $application->refresh();
+
+        $this->assertSame(MembershipApplicationStatus::PENDING_CONFIRMATION, $application->status);
+        $this->assertNull($application->member_id);
+        $this->assertSame(0, Member::query()->where('organization_id', $application->organization_id)->count());
+        $this->assertDatabaseCount('memberships', 0);
+        $this->assertSame(
+            0,
+            $application->statusHistories()
+                ->where('to_status', MembershipApplicationStatus::CONFIRMED->value)
+                ->count(),
+        );
+        $this->assertDatabaseHas('member_payment_obligations', [
+            'membership_application_id' => $application->id,
+            'member_id' => null,
+            'membership_id' => null,
+        ]);
+
+        // Remove the injected failure and verify the same application can be
+        // confirmed successfully after the rolled-back attempt.
+        $this->app->forgetInstance(\Modules\Member\Services\MembershipLifecycleService::class);
+        $this->app->forgetInstance(MembershipApplicationWorkflowService::class);
+
+        $confirmed = app(MembershipApplicationWorkflowService::class)->confirm(
+            application: $application->refresh(),
+            actor: $actor,
+            membershipNumber: null,
+            startsAt: '2026-10-05',
+        );
+
+        $this->assertSame(MembershipApplicationStatus::CONFIRMED, $confirmed->status);
+        $this->assertNotNull($confirmed->member_id);
+        $this->assertSame(1, Member::query()->where('organization_id', $application->organization_id)->count());
+        $this->assertSame(
+            1,
+            $application->statusHistories()
+                ->where('to_status', MembershipApplicationStatus::CONFIRMED->value)
+                ->count(),
+        );
     }
 
     public function test_confirmation_cannot_create_a_second_member_for_the_same_application(): void

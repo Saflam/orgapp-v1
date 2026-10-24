@@ -24,6 +24,12 @@ class ConfirmMembershipApplicationRequest extends FormRequest
                 'required',
                 'date',
             ],
+            'ends_at' => [
+                'sometimes',
+                'nullable',
+                'date',
+                'after_or_equal:starts_at',
+            ],
         ];
     }
 }

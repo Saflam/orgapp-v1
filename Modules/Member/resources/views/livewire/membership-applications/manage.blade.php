@@ -150,7 +150,7 @@
     @if ($successMessage !== '')
         <div class="ma-alert" role="status" aria-live="polite">{{ $successMessage }}</div>
     @endif
-
+    
     @if ($selectedApplication)
         @php
             $data = $selectedApplication->data ?? [];
@@ -165,7 +165,7 @@
             $nextAction = match ($status->value) { 'submitted' => 'Verify Application', 'verified' => 'Review Application', 'reviewed' => 'Approve Application', 'pending_confirmation' => 'Confirm Membership', default => 'Application Details' };
         @endphp
         <div class="ma-page-head">
-            <div><div class="ma-eyebrow">Membership applications / Application #{{ $selectedApplication->id }}</div><h1>{{ $nextAction }}</h1><p>Review applicant details, supporting documents and the decision history.</p></div>
+            <div><div class="ma-eyebrow">Membership Applications / Application #{{ $selectedApplication->id }}</div><h1>{{ $nextAction }}</h1><p>Review applicant details, supporting documents and the decision history.</p></div>
             <button type="button" wire:click="clearSelection" wire:loading.attr="disabled" class="ma-btn">← Back to applications</button>
         </div>
 
@@ -205,6 +205,45 @@
                             <div class="ma-detail"><dt>{{ $label }}</dt><dd>{{ is_scalar($value) && trim((string) $value) !== '' ? $value : '—' }}</dd></div>
                         @endforeach
                     </dl>
+                </section>
+
+                <section class="ma-card">
+                    <h2>Spouse relationship</h2>
+                    @php $selectedSpouseRequest = $spouseRequestByApplicationId[$selectedApplication->id] ?? null; @endphp
+                    @if (data_get($data, 'spouse.member_id'))
+                        <p class="ma-muted" style="font-size:12px;margin-bottom:10px">Applicant selected member #{{ data_get($data, 'spouse.member_id') }} as spouse. Request status: <strong>{{ $selectedSpouseRequest ? str($selectedSpouseRequest->status)->replace('_', ' ')->title() : 'Request not recorded' }}</strong>.</p>
+                        @if ($selectedSpouseRequest)
+                            <p class="ma-muted" style="font-size:12px;margin-bottom:10px">Selected person: {{ $spouseMemberNames[$selectedApplication->id] ?? 'Member' }}. A relationship is created only after acceptance and membership confirmation.</p>
+                        @endif
+                    @else
+                        <p class="ma-muted" style="font-size:12px;margin-bottom:10px">No existing-member spouse request is attached to this application.</p>
+                    @endif
+                    @if ($selectedApplication->member_id)
+                        @forelse ($selectedSpouses as $connectedSpouse)
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line,#e3e8f0)">
+                                <span>{{ $connectedSpouse->user?->name ?? ('Member #'.$connectedSpouse->id) }}</span>
+                                <button type="button" class="ma-btn ma-btn-danger" wire:click="adminDisconnectSpouse({{ $connectedSpouse->id }})" wire:confirm="Disconnect this spouse relationship?">Disconnect</button>
+                            </div>
+                        @empty
+                            <p class="ma-muted" style="font-size:12px">No active spouse relationship.</p>
+                        @endforelse
+                        <form wire:submit="adminConnectSpouse" style="display:flex;gap:8px;align-items:end;margin-top:14px">
+                            <label class="ma-field" style="flex:1"><span>Connect member (administrator)</span>
+                                <select wire:model="spouseMemberId">
+                                    <option value="">Choose member</option>
+                                    @foreach ($organizationMembers as $candidate)
+                                        @if ($candidate->id !== $selectedApplication->member_id)
+                                            <option value="{{ $candidate->id }}">{{ $candidate->user->name }}{{ $candidate->membership_number ? ' · '.$candidate->membership_number : '' }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </label>
+                            <button type="submit" class="ma-btn ma-btn-primary">Connect</button>
+                        </form>
+                        <p class="ma-muted" style="font-size:11px;margin-top:7px">Administrative changes are recorded in relationship metadata. Use only after verifying the relationship.</p>
+                    @else
+                        <p class="ma-muted" style="font-size:12px">Administrator linking is available after the applicant becomes a member.</p>
+                    @endif
                 </section>
 
                 <section class="ma-card">
@@ -359,6 +398,7 @@
                         @error('membershipTypeId')<p class="ma-error" style="margin:0 0 14px">{{ $message }}</p>@enderror
                         <div class="ma-field"><label for="membership-number">Membership number (optional)</label><input id="membership-number" wire:model="membershipNumber" maxlength="255" placeholder="Allocate automatically if blank">@error('membershipNumber')<p class="ma-error">{{ $message }}</p>@enderror</div>
                         <div class="ma-field" style="margin-top:16px"><label for="membership-starts-at">Membership start date</label><input id="membership-starts-at" type="date" wire:model="startsAt" required>@error('startsAt')<p class="ma-error">{{ $message }}</p>@enderror</div>
+                        <div class="ma-field" style="margin-top:16px"><label for="membership-ends-at">Membership expiry date</label><input id="membership-ends-at" type="date" wire:model="endsAt" required>@error('endsAt')<p class="ma-error">{{ $message }}</p>@enderror<div class="ma-muted" style="font-size:11px;margin-top:5px">Defaults to one year from today. Adjust this date before confirming if needed.</div></div>
                         <button type="button" wire:click="confirmMembership" wire:confirm="Confirm and activate this membership?" wire:loading.attr="disabled" class="ma-btn ma-btn-success ma-btn-full" style="margin-top:16px" @disabled(! $selectedApplication->membership_type_id)>Confirm membership</button>
                     </section>
                 @endif
@@ -394,7 +434,7 @@
                 <div class="ma-table-wrap"><table class="ma-table"><thead><tr><th>Applicant</th><th>Unit</th><th>Membership type</th><th>Submitted</th><th>Status</th><th style="text-align:right">Action</th></tr></thead><tbody>
                     @forelse ($applications as $application)
                         @php $memberData = data_get($application->data, 'member', []); $applicantName = trim(implode(' ', array_filter([data_get($memberData, 'first_name'), data_get($memberData, 'middle_name'), data_get($memberData, 'last_name')]))) ?: ($application->user?->name ?: 'Applicant #' . $application->user_id); $rowStatus = $application->status->value; $rowUnit = data_get($memberData, 'preferred_unit_id') ?: data_get($memberData, 'unit_id'); @endphp
-                        <tr wire:key="membership-application-{{ $application->id }}"><td><div class="ma-applicant-name">{{ $applicantName }}</div><div class="ma-applicant-email">{{ $application->user?->email ?: 'No email on account' }}</div><div class="ma-muted" style="font-size:10px;margin-top:3px">Application #{{ $application->id }}</div>@php $sourceSpouseId = data_get($application->data, 'member.metadata.spouse_of_application_id'); $pairedSpouseId = $spouseApplicationBySourceId[$application->id] ?? null; @endphp @if ($sourceSpouseId)<div class="ma-spouse-pair">Spouse application for #{{ $sourceSpouseId }}</div>@elseif ($pairedSpouseId)<div class="ma-spouse-pair">Spouse application #{{ $pairedSpouseId }}</div>@endif</td><td>{{ $unitNames[$rowUnit] ?? 'Not assigned' }}</td><td>{{ $application->membershipType?->name ?? '—' }}</td><td>{{ $application->submitted_at?->format('d M Y, h:i A') ?? '—' }}</td><td><span class="{{ $statusClasses[$rowStatus] ?? 'ma-status ma-status-withdrawn' }}">{{ str($rowStatus)->replace('_', ' ')->title() }}</span></td><td style="text-align:right"><button type="button" class="ma-btn" wire:click="selectApplication({{ $application->id }})" wire:loading.attr="disabled"><span aria-hidden="true">↗</span> Review</button></td></tr>
+                        <tr wire:key="membership-application-{{ $application->id }}"><td><div class="ma-applicant-name">{{ $applicantName }}</div><div class="ma-applicant-email">{{ $application->user?->email ?: 'No email on account' }}</div><div class="ma-muted" style="font-size:10px;margin-top:3px">Application #{{ $application->id }}</div>@php $sourceSpouseId = data_get($application->data, 'member.metadata.spouse_of_application_id'); $pairedSpouseId = $spouseApplicationBySourceId[$application->id] ?? null; @endphp @if ($sourceSpouseId)<div class="ma-spouse-pair">Spouse application for #{{ $sourceSpouseId }}</div>@elseif ($pairedSpouseId)<div class="ma-spouse-pair">Spouse application #{{ $pairedSpouseId }}</div>@endif @if (isset($spouseRequestByApplicationId[$application->id])) @php $spouseRequest = $spouseRequestByApplicationId[$application->id]; @endphp <div class="ma-spouse-pair">Selected spouse: {{ $spouseMemberNames[$application->id] ?? 'Member' }} · {{ str($spouseRequest->status)->replace('_', ' ')->title() }}</div>@endif</td><td>{{ $unitNames[$rowUnit] ?? 'Not assigned' }}</td><td>{{ $application->membershipType?->name ?? '—' }}</td><td>{{ $application->submitted_at?->format('d M Y, h:i A') ?? '—' }}</td><td><span class="{{ $statusClasses[$rowStatus] ?? 'ma-status ma-status-withdrawn' }}">{{ str($rowStatus)->replace('_', ' ')->title() }}</span></td><td style="text-align:right"><button type="button" class="ma-btn" wire:click="selectApplication({{ $application->id }})" wire:loading.attr="disabled"><span aria-hidden="true">↗</span> Review</button></td></tr>
                     @empty <tr><td colspan="6" style="padding:28px;text-align:center;color:var(--muted,#68758b)">No membership applications match these filters.</td></tr> @endforelse
                 </tbody></table></div>
             </div>

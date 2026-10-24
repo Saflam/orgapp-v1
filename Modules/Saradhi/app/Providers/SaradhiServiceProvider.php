@@ -5,6 +5,7 @@ namespace Modules\Saradhi\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Core\Services\ModuleDependencyRegistry;
 use Modules\Member\Services\MembershipApplicationExtensionRegistry;
+use Modules\Member\Services\MemberProfileSectionExtensionRegistry;
 use Modules\Saradhi\Services\SaradhiMembershipApplicationExtension;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -41,6 +42,13 @@ class SaradhiServiceProvider extends ModuleServiceProvider
                     'Saradhi',
                     ['Member'],
                 );
+            }
+        );
+
+        $this->app->afterResolving(
+            MemberProfileSectionExtensionRegistry::class,
+            function (MemberProfileSectionExtensionRegistry $registry): void {
+                $registry->register(new \Modules\Saradhi\Services\SaradhiMemberProfileSectionExtension());
             }
         );
 

@@ -39,7 +39,9 @@ class MembershipApplicationManagement extends Component
     public array $discountReasons = [];
     public string $membershipNumber = '';
     public string $startsAt = '';
+    public string $endsAt = '';
     public string $successMessage = '';
+    public string $spouseMemberId = '';
 
     protected $queryString = [
         'search' => ['except' => ''],
@@ -59,6 +61,7 @@ class MembershipApplicationManagement extends Component
         abort_unless($this->organization instanceof Organization && $this->organization->exists, 404);
         $this->ensureCan('membership.application.view', $authorization);
         $this->startsAt = now()->toDateString();
+        $this->endsAt = now()->addYear()->toDateString();
 
         // Support opening an application directly from the list's Review link.
         $requestedApplicationId = request()->integer('application');
@@ -120,6 +123,8 @@ class MembershipApplicationManagement extends Component
         $this->discountAmounts = [];
         $this->discountReasons = [];
         $this->membershipNumber = '';
+        $this->startsAt = now()->toDateString();
+        $this->endsAt = now()->addYear()->toDateString();
         $this->resetValidation();
     }
 
@@ -287,6 +292,7 @@ class MembershipApplicationManagement extends Component
         $this->validate([
             'membershipNumber' => ['nullable', 'string', 'max:255'],
             'startsAt' => ['required', 'date'],
+            'endsAt' => ['required', 'date', 'after_or_equal:startsAt'],
         ]);
 
         if ($application->membership_type_id === null) {
@@ -315,10 +321,78 @@ class MembershipApplicationManagement extends Component
                 actor: auth()->user(),
                 membershipNumber: $number,
                 startsAt: $this->startsAt,
+                endsAt: $this->endsAt,
             );
         });
 
         $this->successMessage = 'Membership confirmed and activated.';
+        $this->refreshSelected();
+    }
+
+    public function adminConnectSpouse(AuthorizationService $authorization): void
+    {
+        $this->ensureCan('members.update', $authorization);
+        $application = $this->selected('membership.application.view', $authorization);
+        abort_unless($application->member_id !== null, 422, 'The applicant must become a member before a relationship can be connected.');
+        $this->validate(['spouseMemberId' => ['required', 'integer']]);
+
+        $left = \Modules\Member\Models\Member::query()
+            ->where('organization_id', $this->organization->id)
+            ->findOrFail($application->member_id);
+        $right = \Modules\Member\Models\Member::query()
+            ->where('organization_id', $this->organization->id)
+            ->findOrFail((int) $this->spouseMemberId);
+        abort_if($left->id === $right->id, 422, 'A member cannot be their own spouse.');
+
+        $hasSpouse = \Modules\Member\Models\MemberRelationship::query()
+            ->where('relationship_type', 'spouse')->whereNull('ended_at')
+            ->where(fn ($query) => $query->where('member_id', $left->id)->orWhere('related_member_id', $left->id)
+                ->orWhere('member_id', $right->id)->orWhere('related_member_id', $right->id))
+            ->exists();
+        abort_if($hasSpouse, 422, 'One of these members already has an active spouse relationship.');
+
+        DB::transaction(function () use ($left, $right): void {
+            foreach ([[$left->id, $right->id], [$right->id, $left->id]] as [$memberId, $relatedId]) {
+                \Modules\Member\Models\MemberRelationship::query()->create([
+                    'member_id' => $memberId,
+                    'related_member_id' => $relatedId,
+                    'relationship_type' => 'spouse',
+                    'started_at' => now()->toDateString(),
+                    'metadata' => ['source' => 'administrator', 'actor_user_id' => auth()->id()],
+                ]);
+            }
+        });
+
+        $this->spouseMemberId = '';
+        $this->successMessage = 'Spouse relationship connected by administrator.';
+        $this->refreshSelected();
+    }
+
+    public function adminDisconnectSpouse(int $relatedMemberId, AuthorizationService $authorization): void
+    {
+        $this->ensureCan('members.update', $authorization);
+        $application = $this->selected('membership.application.view', $authorization);
+        abort_unless($application->member_id !== null, 422);
+
+        $relatedMember = \Modules\Member\Models\Member::query()
+            ->where('organization_id', $this->organization->id)
+            ->findOrFail($relatedMemberId);
+
+        DB::transaction(function () use ($application, $relatedMember): void {
+            \Modules\Member\Models\MemberRelationship::query()
+                ->where('relationship_type', 'spouse')
+                ->whereNull('ended_at')
+                ->where(function ($query) use ($application, $relatedMember): void {
+                    $query->where('member_id', $application->member_id)->where('related_member_id', $relatedMember->id)
+                        ->orWhere('member_id', $relatedMember->id)->where('related_member_id', $application->member_id);
+                })
+                ->update([
+                    'ended_at' => now()->toDateString(),
+                    'metadata' => json_encode(['source' => 'administrator', 'actor_user_id' => auth()->id(), 'disconnected_at' => now()->toIso8601String()]),
+                ]);
+        });
+
+        $this->successMessage = 'Spouse relationship disconnected by administrator.';
         $this->refreshSelected();
     }
 
@@ -386,6 +460,22 @@ class MembershipApplicationManagement extends Component
                 });
         }
 
+        $spouseRequestByApplicationId = [];
+        $spouseMemberNames = [];
+        if ($pageIds !== []) {
+            \Modules\Member\Models\SpouseRelationshipRequest::query()
+                ->where('organization_id', $this->organization->id)
+                ->whereIn('requester_application_id', $pageIds)
+                ->with('targetMember.user')
+                ->latest('id')
+                ->get()
+                ->each(function ($spouseRequest) use (&$spouseRequestByApplicationId, &$spouseMemberNames): void {
+                    $applicationId = (int) $spouseRequest->requester_application_id;
+                    $spouseRequestByApplicationId[$applicationId] ??= $spouseRequest;
+                    $spouseMemberNames[$applicationId] = $spouseRequest->targetMember?->user?->name ?? 'Selected member';
+                });
+        }
+
         $selectedApplication = null;
         if ($this->selectedApplicationId !== null) {
             $selectedApplication = MembershipApplication::query()
@@ -403,6 +493,31 @@ class MembershipApplicationManagement extends Component
 
         $units = Unit::query()->where('organization_id', $this->organization->id)->orderBy('name')->get(['id', 'name']);
         $membershipTypes = MembershipType::query()->where('organization_id', $this->organization->id)->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $organizationMembers = \Modules\Member\Models\Member::query()
+            ->where('organization_id', $this->organization->id)
+            ->with('user')
+            ->get()
+            ->filter(fn ($member) => $member->user !== null)
+            ->sortBy(fn ($member) => $member->user->name)
+            ->values();
+        $selectedSpouses = collect();
+        if ($selectedApplication?->member_id) {
+            $selectedSpouses = \Modules\Member\Models\MemberRelationship::query()
+                ->where('relationship_type', 'spouse')
+                ->whereNull('ended_at')
+                ->where(function ($query) use ($selectedApplication): void {
+                    $query->where('member_id', $selectedApplication->member_id)
+                        ->orWhere('related_member_id', $selectedApplication->member_id);
+                })
+                ->with(['member.user', 'relatedMember.user'])
+                ->get()
+                ->map(fn ($relationship) => (int) $relationship->member_id === (int) $selectedApplication->member_id
+                    ? $relationship->relatedMember
+                    : $relationship->member)
+                ->filter()
+                ->unique('id')
+                ->values();
+        }
         $unitNames = $units->pluck('name', 'id');
         $pendingApplications = MembershipApplication::query()
             ->where('organization_id', $this->organization->id)
@@ -433,10 +548,10 @@ class MembershipApplicationManagement extends Component
             ? app(MemberPaymentService::class)->pendingApplicationObligations($selectedApplication)
                 ->load(['discounts.actor'])
             : collect();
-
-        return view('member::livewire.membership-applications.manage', compact('applications', 'selectedApplication', 'statuses', 'units', 'unitNames', 'membershipTypes', 'pendingCount', 'spouseApplicationBySourceId', 'canReceivePayment', 'canDiscountPayment', 'invoiceObligations'))
+            
+        return view('member::livewire.membership-applications.manage', compact('applications', 'selectedApplication', 'statuses', 'units', 'unitNames', 'membershipTypes', 'organizationMembers', 'selectedSpouses', 'pendingCount', 'spouseApplicationBySourceId', 'spouseRequestByApplicationId', 'spouseMemberNames', 'canReceivePayment', 'canDiscountPayment', 'invoiceObligations'))
             ->layout('core::layouts.organization-admin', [
-                'pageTitle' => 'Membership applications',
+                'pageTitle' => 'Membership Applications',
                 'layoutOrganization' => $this->organization,
             ]);
     }
