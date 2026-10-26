@@ -44,6 +44,44 @@ class MembershipNumberService
         return $number;
     }
 
+    /**
+     * Normalize an administrator-entered membership number.
+     * A numeric value such as "5" becomes SAA-0005 (using this organization's
+     * configured base prefix and current alphabetic series). Fully formatted
+     * values are accepted only when they use this organization's prefix.
+     */
+    public function normalizeManualNumber(Organization $organization, string $membershipNumber): string
+    {
+        $value = strtoupper(trim($membershipNumber));
+        if ($value === '') {
+            return '';
+        }
+
+        $lockedOrganization = Organization::query()->whereKey($organization->id)->lockForUpdate()->firstOrFail();
+        $numbering = $this->numberingSettings($lockedOrganization);
+
+        if (preg_match('/^[0-9]+$/', $value)) {
+            $sequence = (int) $value;
+            if ($sequence < 1 || $sequence > 9999) {
+                throw ValidationException::withMessages([
+                    'membership_number' => 'Enter a sequence between 1 and 9999, or leave the field empty for automatic assignment.',
+                ]);
+            }
+
+            return sprintf('%s%s-%04d', $numbering['base_prefix'], $numbering['series'], $sequence);
+        }
+
+        if (! preg_match('/^([A-Z]{2})([A-Z])-([0-9]{4})$/', $value, $matches)
+            || $matches[1] !== $numbering['base_prefix']
+            || (int) $matches[3] < 1) {
+            throw ValidationException::withMessages([
+                'membership_number' => 'Enter a number from 1 to 9999 or a membership ID in the configured format, such as SAA-0005.',
+            ]);
+        }
+
+        return $value;
+    }
+
     /** Keep the persisted counter ahead of a manually assigned number in this series. */
     public function observeManualNumber(Organization $organization, string $membershipNumber): void
     {

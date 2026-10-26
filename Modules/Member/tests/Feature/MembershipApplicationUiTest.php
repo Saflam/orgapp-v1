@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
 use Modules\Core\Models\Unit;
 use Modules\Core\Models\IdentificationType;
 use Modules\Core\Services\OrganizationIdentificationService;
@@ -14,6 +15,7 @@ use Modules\Member\Models\MembershipType;
 use Modules\Member\Models\MembershipApplication;
 use Modules\Member\Models\MembershipApplicationStatusHistory;
 use Modules\Member\Enums\MembershipApplicationStatus;
+use Modules\Member\Livewire\MembershipApplicationManagement;
 use Modules\Member\Tests\Concerns\ActsAsMemberOrganizationUser;
 use Tests\TestCase;
 
@@ -21,6 +23,73 @@ class MembershipApplicationUiTest extends TestCase
 {
     use RefreshDatabase;
     use ActsAsMemberOrganizationUser;
+
+
+    public function test_confirmed_applications_are_hidden_from_active_list_but_available_in_status_history_filter(): void
+    {
+        $organization = Organization::factory()->create([
+            'slug' => 'apply-confirmed-history-' . uniqid(),
+        ]);
+        $this->actAsMemberOrganizationAdmin($organization);
+        $actor = auth()->user();
+
+        $confirmedUser = User::factory()->create();
+        $activeUser = User::factory()->create();
+
+        $confirmedApplication = MembershipApplication::query()->create([
+            'organization_id' => $organization->id,
+            'user_id' => $confirmedUser->id,
+            'membership_type_id' => null,
+            'status' => MembershipApplicationStatus::CONFIRMED,
+            'current_step' => 1,
+            'completed_steps' => [],
+            'data' => ['member' => ['first_name' => 'Confirmed', 'last_name' => 'Applicant']],
+            'submitted_at' => now()->subDays(2),
+        ]);
+
+        $activeApplication = MembershipApplication::query()->create([
+            'organization_id' => $organization->id,
+            'user_id' => $activeUser->id,
+            'membership_type_id' => null,
+            'status' => MembershipApplicationStatus::SUBMITTED,
+            'current_step' => 5,
+            'completed_steps' => [1, 2, 3, 4, 5],
+            'data' => ['member' => ['first_name' => 'Active', 'last_name' => 'Applicant']],
+            'submitted_at' => now()->subDay(),
+        ]);
+
+        $history = $confirmedApplication->statusHistories()->create([
+            'from_status' => MembershipApplicationStatus::PENDING_CONFIRMATION->value,
+            'to_status' => MembershipApplicationStatus::CONFIRMED->value,
+            'actor_user_id' => $actor->id,
+            'notes' => 'Membership confirmed.',
+            'allow_reapply' => false,
+            'metadata' => [],
+        ]);
+
+        Livewire::test(MembershipApplicationManagement::class, ['organization' => $organization])
+            ->assertSee('Active Applicant')
+            ->assertDontSee('Confirmed Applicant')
+            ->set('statusFilter', MembershipApplicationStatus::CONFIRMED->value)
+            ->assertSee('Confirmed Applicant')
+            ->assertDontSee('Active Applicant');
+
+        $this->assertDatabaseHas('membership_applications', [
+            'id' => $confirmedApplication->id,
+            'organization_id' => $organization->id,
+            'status' => MembershipApplicationStatus::CONFIRMED->value,
+        ]);
+        $this->assertDatabaseHas('membership_application_status_histories', [
+            'id' => $history->id,
+            'membership_application_id' => $confirmedApplication->id,
+            'to_status' => MembershipApplicationStatus::CONFIRMED->value,
+            'notes' => 'Membership confirmed.',
+        ]);
+        $this->assertDatabaseHas('membership_applications', [
+            'id' => $activeApplication->id,
+            'status' => MembershipApplicationStatus::SUBMITTED->value,
+        ]);
+    }
 
     public function test_membership_application_page_renders_mobile_first_form_shell(): void
     {

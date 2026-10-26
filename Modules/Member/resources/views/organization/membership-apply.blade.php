@@ -14,32 +14,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="mobile-web-app-capable" content="yes">
-    <style>
-        :root {
-            --membership-primary: {{ $primaryColor ?? '#174b3d' }};
-            --membership-accent: {{ $accentColor ?? '#d9a441' }};
-        }
-        .membership-app { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
-        .membership-control { width: 100%; min-height: 48px; border: 1px solid #d6d9d5; border-radius: 0.9rem; background: #fff; padding: 0.72rem 0.9rem; color: #17211d; font: inherit; }
-        .membership-control:focus { outline: 3px solid color-mix(in srgb, var(--membership-primary) 20%, transparent); border-color: var(--membership-primary); }
-        .membership-label { display: block; margin-bottom: .4rem; color: #34443d; font-size: .875rem; font-weight: 650; }
-        .membership-field { min-width: 0; }
-        .membership-card { border: 1px solid #e7e8e4; border-radius: 1.2rem; background: #fff; box-shadow: 0 8px 28px rgba(24, 39, 31, .035); }
-        .membership-primary { background: var(--membership-primary); color: #fff; }
-        .membership-primary:focus-visible, .membership-secondary:focus-visible { outline: 3px solid color-mix(in srgb, var(--membership-primary) 30%, transparent); outline-offset: 3px; }
-        .membership-secondary { border: 1px solid #d9ded9; background: #fff; color: #27372f; }
-        .membership-step[aria-current="step"] .membership-step-dot { background: var(--membership-primary); color: #fff; border-color: var(--membership-primary); }
-        .membership-step[data-complete="true"] .membership-step-dot { background: #e5f3eb; color: var(--membership-primary); border-color: #b8d9c7; }
-        .membership-step-label { display: none; }
-        @media (min-width: 640px) { .membership-step-label { display: block; } }
-        .membership-error { color: #b42318; font-size: .875rem; }
-        .membership-panel[hidden] { display: none !important; }
-        .membership-actionbar { padding-bottom: max(.9rem, env(safe-area-inset-bottom)); }
-    </style>
+    
 @endpush
 
 @section('content')
-<div class="membership-app min-h-screen bg-[#f7f8f5] text-slate-900" data-membership-application
+<div class="membership-app min-h-screen bg-[#f7f8f5] text-slate-900" style="--membership-primary: {{ $primaryColor ?? '#174b3d' }}; --membership-accent: {{ $accentColor ?? '#d9a441' }}" data-membership-application
      data-config-url="{{ route('organization.membership.apply.configuration') }}"
      data-submit-url="{{ ($spouseMode ?? false) ? route('organization.membership.apply.spouse.submit') : route('organization.membership.apply.submit') }}"
      data-draft-url="{{ route('organization.membership.apply.draft') }}"

@@ -184,6 +184,20 @@ class MembershipApplicationWorkflowService
             if ($membershipNumber === '') {
                 $membershipNumber = $this->membershipNumberService->allocate($organization);
             } else {
+                $membershipNumber = $this->membershipNumberService->normalizeManualNumber(
+                    $organization,
+                    $membershipNumber,
+                );
+
+                if (Member::query()
+                    ->where('organization_id', $organization->id)
+                    ->where('membership_number', $membershipNumber)
+                    ->exists()) {
+                    throw ValidationException::withMessages([
+                        'membership_number' => 'This membership ID is already assigned within the organization.',
+                    ]);
+                }
+
                 $this->membershipNumberService->observeManualNumber($organization, $membershipNumber);
             }
 

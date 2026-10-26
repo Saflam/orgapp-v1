@@ -12,44 +12,7 @@
     @error('period') <div class="error" role="alert">{{ $message }}</div> @enderror
 
     @if ($canManage)
-        <style>
-            .finance-period-management .financial-year-pattern-grid {
-                display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
-                align-items: end;
-                gap: 1rem;
-            }
-
-            .finance-period-management .financial-year-generate-grid {
-                display: grid;
-                grid-template-columns: minmax(12rem, 22rem) auto;
-                align-items: end;
-                gap: 1rem;
-            }
-
-            .finance-period-management .inline-form-action {
-                display: flex;
-                align-items: end;
-                padding-bottom: 0.15rem;
-            }
-
-            @media (max-width: 900px) {
-                .finance-period-management .financial-year-pattern-grid {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
-                }
-
-                .finance-period-management .financial-year-generate-grid {
-                    grid-template-columns: minmax(0, 1fr) auto;
-                }
-            }
-
-            @media (max-width: 560px) {
-                .finance-period-management .financial-year-pattern-grid,
-                .finance-period-management .financial-year-generate-grid {
-                    grid-template-columns: minmax(0, 1fr);
-                }
-            }
-        </style>
+        
 
         <section class="card">
             <h2>Financial-year pattern</h2>

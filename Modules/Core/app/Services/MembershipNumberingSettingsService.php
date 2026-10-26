@@ -3,7 +3,6 @@
 namespace Modules\Core\Services;
 
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Organization;
 
 /**
@@ -14,17 +13,11 @@ class MembershipNumberingSettingsService
 {
     public const SETTING_KEY = 'membership_numbering';
 
-    public function initialize(Organization $organization, ?string $requestedPrefix = null): array
+    public function initialize(Organization $organization): array
     {
-        $prefix = $requestedPrefix === null || trim($requestedPrefix) === ''
-            ? $this->suggestPrefix((string) $organization->name)
-            : strtoupper(trim($requestedPrefix));
-
-        if (! preg_match('/^[A-Z]{2}$/', $prefix)) {
-            throw ValidationException::withMessages([
-                'organization.membership_prefix' => 'The membership prefix must contain exactly two letters.',
-            ]);
-        }
+        // The base prefix is derived from the organization name and is not
+        // supplied or overridden by the organization-creation request.
+        $prefix = $this->suggestPrefix((string) $organization->name);
 
         $settings = $organization->settings ?? [];
         $settings[self::SETTING_KEY] = [
@@ -52,8 +45,7 @@ class MembershipNumberingSettingsService
 
         // For multi-word names, use the initials of the first two words
         // (Kerala Cultural Association -> KC). For a single-word name, use
-        // its first two letters (Saradhi -> SA). The creator can set a more
-        // recognizable two-letter code, such as SD, during creation.
+        // its first two letters (Saradhi -> SA).
         if (count($words) >= 2) {
             return strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
         }

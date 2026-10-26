@@ -328,7 +328,8 @@ class SaradhiMembershipApplicationExtensionTest extends TestCase
         $confirmed = $workflow->confirm(
             application: $application->refresh(),
             actor: $actor,
-            membershipNumber: 'SARADHI-001',
+            // Let the organization-scoped numbering service allocate a valid ID.
+            membershipNumber: null,
             startsAt: '2026-10-05',
         );
 
@@ -338,7 +339,7 @@ class SaradhiMembershipApplicationExtensionTest extends TestCase
         );
 
         $member = Member::query()
-            ->where('membership_number', 'SARADHI-001')
+            ->whereKey($confirmed->member_id)
             ->firstOrFail();
 
         $profile = SaradhiMemberProfile::query()

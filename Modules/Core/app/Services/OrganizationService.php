@@ -34,11 +34,11 @@ class OrganizationService
             );
 
             $organizationData = $data['organization'];
-            $membershipPrefix = $organizationData['membership_prefix'] ?? null;
+            // Membership prefix is derived automatically from the organization name.
             unset($organizationData['membership_prefix']);
 
             $organization = Organization::create($organizationData);
-            $this->membershipNumberingSettingsService->initialize($organization, $membershipPrefix);
+            $this->membershipNumberingSettingsService->initialize($organization);
 
             $this->initializeModules($organization, $data['modules'] ?? []);
             $this->initializeNotificationChannels(

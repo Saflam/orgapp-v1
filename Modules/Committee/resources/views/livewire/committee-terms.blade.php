@@ -42,17 +42,4 @@
         @empty<tr><td colspan="4" class="committee-empty-state">No terms have been created for this committee yet.</td></tr>@endforelse
     </tbody></table></div></section>
 </div>
-<style>
-.committee-term-form-inline{display:grid;grid-template-columns:minmax(190px,1fr) minmax(190px,1fr) auto;align-items:end;gap:14px;margin-top:14px}
-.committee-term-form-inline .committee-form-field{min-width:0}
-.committee-term-form-actions{display:flex;align-items:center;gap:8px;padding-bottom:1px;min-height:42px}
-.committee-term-avatar-group{display:flex;align-items:center;min-width:110px}
-.committee-term-avatar{display:inline-flex;width:32px;height:32px;flex:0 0 32px;align-items:center;justify-content:center;object-fit:cover;border:2px solid var(--panel,#fff);border-radius:50%;background:var(--brand-soft,#edf2ff);color:var(--brand,#4776e6);font-size:12px;font-weight:800}
-.committee-term-avatar+.committee-term-avatar{margin-left:-9px}
-.committee-term-avatar-fallback[hidden]{display:none!important}
-.committee-term-avatar-more{display:inline-flex;width:32px;height:32px;align-items:center;justify-content:center;margin-left:-8px;border:2px solid var(--panel,#fff);border-radius:50%;background:var(--canvas,#f6f8fc);color:var(--ink,#172033);font-size:10px;font-weight:800}
-.committee-term-member-count{margin-left:8px;color:var(--muted,#68758b);font-size:11px}
-.committee-status.is-current-term{margin-top:5px;background:#e3f6ec;color:#176b45}
-html[data-theme="dark"] .committee-status.is-current-term{background:#1e4435;color:#a8e5c4}
-@media(max-width:760px){.committee-term-form-inline{grid-template-columns:1fr}.committee-term-form-actions{padding-top:4px}}
-</style>
+

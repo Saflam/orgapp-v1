@@ -1,0 +1,207 @@
+/*
+ * Saradhi shared UI design system.
+ * Keep shared tokens and reusable component primitives here.
+ * Module/page styles should be scoped and should consume these tokens rather than
+ * defining independent colors, radii, spacing, and control dimensions.
+ */
+:root {
+    --s-ui-font-family: var(--font-sans, 'Instrument Sans', ui-sans-serif, system-ui, sans-serif);
+    --s-ui-control-height: 42px;
+    --s-ui-control-radius: 9px;
+    --s-ui-card-radius: 14px;
+    --s-ui-space-1: 4px;
+    --s-ui-space-2: 8px;
+    --s-ui-space-3: 12px;
+    --s-ui-space-4: 16px;
+    --s-ui-space-5: 20px;
+    --s-ui-space-6: 24px;
+    --s-ui-border: var(--line, #e3e8f0);
+    --s-ui-surface: var(--panel, #ffffff);
+    --s-ui-canvas: var(--canvas, #f6f8fc);
+    --s-ui-text: var(--ink, #172033);
+    --s-ui-muted: var(--muted, #68758b);
+    --s-ui-primary: var(--brand, #4776e6);
+    --s-ui-danger: var(--danger, #a12626);
+}
+
+.s-ui-card {
+    min-width: 0;
+    border: 1px solid var(--s-ui-border);
+    border-radius: var(--s-ui-card-radius);
+    background: var(--s-ui-surface);
+    color: var(--s-ui-text);
+}
+
+.s-ui-label {
+    display: block;
+    margin-bottom: var(--s-ui-space-2);
+    color: var(--s-ui-muted);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.s-ui-control {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: var(--s-ui-control-height);
+    padding: 0 var(--s-ui-space-3);
+    border: 1px solid var(--s-ui-border);
+    border-radius: var(--s-ui-control-radius);
+    background: var(--s-ui-surface);
+    color: var(--s-ui-text);
+    font-family: var(--s-ui-font-family);
+    font-size: 14px;
+    line-height: 1.35;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.s-ui-control:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--s-ui-primary) 24%, transparent);
+    outline-offset: 1px;
+    border-color: var(--s-ui-primary);
+}
+
+textarea.s-ui-control {
+    min-height: 96px;
+    padding-top: var(--s-ui-space-3);
+    padding-bottom: var(--s-ui-space-3);
+    resize: vertical;
+}
+
+.s-ui-button {
+    box-sizing: border-box;
+    display: inline-flex;
+    min-height: var(--s-ui-control-height);
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-ui-space-2);
+    padding: 0 var(--s-ui-space-4);
+    border: 1px solid var(--s-ui-border);
+    border-radius: var(--s-ui-control-radius);
+    background: var(--s-ui-surface);
+    color: var(--s-ui-text);
+    font-family: var(--s-ui-font-family);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.s-ui-button:hover {
+    background: color-mix(in srgb, var(--s-ui-surface) 92%, var(--s-ui-text));
+}
+
+.s-ui-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--s-ui-primary) 28%, transparent);
+    outline-offset: 2px;
+}
+
+.s-ui-button:disabled,
+.s-ui-button[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: .55;
+}
+
+.s-ui-button--primary {
+    border-color: var(--s-ui-primary);
+    background: var(--s-ui-primary);
+    color: #fff;
+}
+
+.s-ui-button--primary:hover {
+    background: color-mix(in srgb, var(--s-ui-primary) 88%, #000);
+}
+
+.s-ui-icon-button {
+    box-sizing: border-box;
+    display: inline-flex;
+    width: var(--s-ui-control-height);
+    min-width: var(--s-ui-control-height);
+    height: var(--s-ui-control-height);
+    min-height: var(--s-ui-control-height);
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--s-ui-border);
+    border-radius: var(--s-ui-control-radius);
+    background: var(--s-ui-surface);
+    color: var(--s-ui-text);
+    cursor: pointer;
+}
+
+.s-ui-icon-button svg,
+.s-ui-icon-button .icon {
+    width: 17px;
+    height: 17px;
+}
+
+.s-ui-filter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(130px, .8fr)) auto;
+    align-items: end;
+    gap: var(--s-ui-space-2);
+}
+
+.s-ui-table-wrap {
+    min-width: 0;
+    overflow-x: auto;
+    border: 1px solid var(--s-ui-border);
+    border-radius: var(--s-ui-card-radius);
+    background: var(--s-ui-surface);
+}
+
+.s-ui-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--s-ui-text);
+    font-size: 14px;
+}
+
+.s-ui-table th {
+    background: var(--s-ui-canvas);
+    color: var(--s-ui-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .025em;
+    text-align: left;
+}
+
+.s-ui-table th,
+.s-ui-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--s-ui-border);
+    vertical-align: middle;
+}
+
+.s-ui-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.s-ui-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid var(--s-ui-border);
+    border-radius: 999px;
+    background: var(--s-ui-canvas);
+    color: var(--s-ui-text);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.3;
+}
+
+@media (max-width: 760px) {
+    .s-ui-filter-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .s-ui-filter-row > :first-child {
+        grid-column: 1 / -1;
+    }
+}

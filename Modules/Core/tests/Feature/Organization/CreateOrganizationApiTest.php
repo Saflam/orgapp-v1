@@ -36,6 +36,7 @@ class CreateOrganizationApiTest extends TestCase
                 'organization' => [
                     'name' => 'Kerala Cultural Association',
                     'code' => 'KCA',
+                    'membership_prefix' => 'SD',
                 ],
                 'super_admin' => [
                     'name' => 'John Doe',

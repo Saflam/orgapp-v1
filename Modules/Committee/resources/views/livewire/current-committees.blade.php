@@ -18,6 +18,4 @@
         @endforeach
     @endif
 </div>
-<style>
-.committee-current-group{display:grid;gap:12px}.committee-current-group-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 20px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.committee-current-group-header h2{margin:0}.committee-current-group-header .committee-eyebrow{margin:0 0 5px}.committee-current-group-header .committee-page-description{margin-top:5px}.committee-status.is-key-position{margin-left:6px;background:#fff1cc;color:#865b00}html[data-theme="dark"] .committee-status.is-key-position{background:#4b3a16;color:#f6d77d}
-</style>
+

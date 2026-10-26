@@ -4,10 +4,13 @@ use Illuminate\Support\Facades\Route;
 use Modules\Member\Livewire\MembershipTypeManagement;
 use Modules\Member\Livewire\MembershipApplicationManagement;
 use Modules\Member\Livewire\MemberPaymentCategoryManagement;
+use Modules\Member\Livewire\MemberDirectory;
 use Modules\Member\Http\Controllers\Web\MembershipApplicationPageController;
 use Modules\Member\Http\Controllers\Web\MembershipApplicationMediaController;
 use Modules\Member\Http\Controllers\Api\MembershipApplicationController;
 use Modules\Member\Http\Controllers\Web\MemberPortalController;
+use Modules\Member\Http\Controllers\Web\AdminMemberProfileController;
+use Modules\Member\Http\Controllers\Web\MemberPaymentManagementController;
 use Modules\Member\Http\Controllers\Web\SpouseRelationshipRequestController;
 
 Route::middleware(['auth', 'organization', 'organization.access'])
@@ -16,12 +19,42 @@ Route::middleware(['auth', 'organization', 'organization.access'])
             ->name('member.membership-types');
         Route::get('/organization/membership-applications', MembershipApplicationManagement::class)
             ->name('member.membership-applications');
+        Route::get('/organization/members', MemberDirectory::class)
+            ->middleware('module:Member')
+            ->name('member.directory');
+        Route::get('/organization/members/{member}', [AdminMemberProfileController::class, 'show'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile');
+        Route::get('/organization/members/{member}/pdf', [AdminMemberProfileController::class, 'downloadPdf'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.pdf');
+        Route::get('/organization/members/{member}/edit', [AdminMemberProfileController::class, 'edit'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.edit');
+        Route::put('/organization/members/{member}', [AdminMemberProfileController::class, 'update'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.update');
+        Route::post('/organization/members/{member}/notes', [AdminMemberProfileController::class, 'storeNote'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.notes.store');
         Route::get('/organization/membership-applications/{applicationId}/media/{mediaId}', [MembershipApplicationMediaController::class, 'show'])
             ->whereNumber('applicationId')
             ->whereNumber('mediaId')
             ->name('member.membership-application.media');
         Route::get('/organization/payment-categories', MemberPaymentCategoryManagement::class)
             ->name('member.payment-categories');
+        Route::get('/organization/member-payments', [MemberPaymentManagementController::class, 'index'])
+            ->middleware('module:Member')
+            ->name('member.payments.index');
+        Route::post('/organization/member-payments/members/{member}/collect', [MemberPaymentManagementController::class, 'collect'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.payments.collect');
     });
 
 // Member self-service portal. Keep these tenant- and module-scoped in the Member module.

@@ -3,7 +3,6 @@
 namespace Modules\Core\Tests\Feature\Organization;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\MembershipNumberingSettingsService;
 use Tests\TestCase;
@@ -20,26 +19,29 @@ class MembershipNumberingSettingsServiceTest extends TestCase
         $this->assertSame('SA', $service->suggestPrefix('Saradhi'));
     }
 
-    public function test_it_initializes_an_explicit_prefix_and_first_series(): void
+    public function test_it_initializes_an_automatic_prefix_and_first_series(): void
     {
         $organization = Organization::factory()->create(['name' => 'Saradhi']);
 
-        $numbering = app(MembershipNumberingSettingsService::class)->initialize($organization, 'sd');
+        $numbering = app(MembershipNumberingSettingsService::class)->initialize($organization);
 
         $this->assertSame([
-            'base_prefix' => 'SD',
+            'base_prefix' => 'SA',
             'series' => 'A',
             'next_sequence' => 1,
             'initialized' => true,
         ], $numbering);
-        $this->assertSame('SD', $organization->fresh()->settings['membership_numbering']['base_prefix']);
+        $this->assertSame('SA', $organization->fresh()->settings['membership_numbering']['base_prefix']);
     }
 
-    public function test_it_rejects_a_prefix_that_is_not_exactly_two_letters(): void
+    public function test_it_derives_the_prefix_from_the_organization_name(): void
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create(['name' => 'Saradhi']);
 
-        $this->expectException(ValidationException::class);
-        app(MembershipNumberingSettingsService::class)->initialize($organization, 'SDA');
+        $numbering = app(MembershipNumberingSettingsService::class)->initialize($organization);
+
+        $this->assertSame('SA', $numbering['base_prefix']);
+        $this->assertSame('A', $numbering['series']);
+        $this->assertSame(1, $numbering['next_sequence']);
     }
 }

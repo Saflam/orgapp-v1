@@ -60,6 +60,11 @@ class Member extends Model
         return $this->belongsTo(Unit::class);
     }
 
+    public function adminNotes(): HasMany
+    {
+        return $this->hasMany(AdminMemberNote::class)->latest('created_at');
+    }
+
     public function changes(): HasMany
     {
         return $this->hasMany(MemberChange::class)->latest('id');

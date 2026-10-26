@@ -34,6 +34,17 @@ class MembershipNumberServiceTest extends TestCase
         $this->assertSame('SDB-0001', $service->allocate($organization->fresh()));
     }
 
+    public function test_numeric_manual_number_is_formatted_with_the_organization_prefix_and_series(): void
+    {
+        $organization = $this->organizationWithNumbering('SA', 'A', 1);
+        $service = app(MembershipNumberService::class);
+
+        $this->assertSame('SAA-0005', $service->normalizeManualNumber($organization, '5'));
+        $service->observeManualNumber($organization, 'SAA-0005');
+
+        $this->assertSame('SAA-0006', $service->suggest($organization->fresh()));
+    }
+
     public function test_manual_number_in_the_configured_series_advances_the_counter(): void
     {
         $organization = $this->organizationWithNumbering('SD', 'A', 1);
@@ -42,6 +53,28 @@ class MembershipNumberServiceTest extends TestCase
         $service->observeManualNumber($organization, 'SDA-0042');
 
         $this->assertSame('SDA-0043', $service->suggest($organization->fresh()));
+    }
+
+    public function test_numeric_manual_number_must_be_between_one_and_9999(): void
+    {
+        $organization = $this->organizationWithNumbering('SA', 'A', 1);
+        $service = app(MembershipNumberService::class);
+
+        try {
+            $service->normalizeManualNumber($organization, '10000');
+            $this->fail('Expected an out-of-range membership number to be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('membership_number', $exception->errors());
+        }
+    }
+
+    public function test_formatted_manual_number_must_use_the_organizations_prefix(): void
+    {
+        $organization = $this->organizationWithNumbering('SA', 'A', 1);
+        $service = app(MembershipNumberService::class);
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $service->normalizeManualNumber($organization, 'SDA-0005');
     }
 
     public function test_series_z_exhaustion_is_reported(): void

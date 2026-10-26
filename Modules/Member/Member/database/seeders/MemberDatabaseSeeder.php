@@ -1,0 +1,18 @@
+<?php
+
+namespace Modules\Member\Database\Seeders;
+
+use Illuminate\Database\Seeder;
+
+class MemberDatabaseSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
+    {
+        $this->call([
+            MemberPermissionSeeder::class,
+        ]);
+    }
+}

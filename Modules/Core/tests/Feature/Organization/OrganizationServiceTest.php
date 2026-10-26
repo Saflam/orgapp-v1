@@ -52,14 +52,13 @@ class OrganizationServiceTest extends TestCase
         ]);
     }
 
-    public function test_it_initializes_membership_numbering_and_accepts_a_creation_time_prefix(): void
+    public function test_it_initializes_membership_numbering_from_the_organization_name(): void
     {
         $organization = app(OrganizationService::class)->create([
             'organization' => [
                 'name' => 'Saradhi',
                 'code' => 'SARADHI',
                 'slug' => 'saradhi',
-                'membership_prefix' => 'SD',
             ],
             'super_admin' => [
                 'name' => 'John Doe',
@@ -67,7 +66,7 @@ class OrganizationServiceTest extends TestCase
             ],
         ]);
 
-        $this->assertSame('SD', $organization->settings['membership_numbering']['base_prefix']);
+        $this->assertSame('SA', $organization->settings['membership_numbering']['base_prefix']);
         $this->assertSame('A', $organization->settings['membership_numbering']['series']);
         $this->assertSame(1, $organization->settings['membership_numbering']['next_sequence']);
         $this->assertArrayNotHasKey('membership_prefix', $organization->getAttributes());

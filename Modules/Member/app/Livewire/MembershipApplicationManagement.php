@@ -402,6 +402,13 @@ class MembershipApplicationManagement extends Component
 
         $applications = MembershipApplication::query()
             ->where('organization_id', $this->organization->id)
+            // Keep confirmed applications out of the active list by default,
+            // while allowing administrators to retrieve them through the status
+            // filter for historical review.
+            ->when(
+                $this->statusFilter !== MembershipApplicationStatus::CONFIRMED->value,
+                fn (Builder $query) => $query->where('status', '!=', MembershipApplicationStatus::CONFIRMED->value),
+            )
             ->with(['user', 'membershipType'])
             ->when($this->unitFilter !== '', function (Builder $query): void {
                 $unitId = (string) ((int) $this->unitFilter);

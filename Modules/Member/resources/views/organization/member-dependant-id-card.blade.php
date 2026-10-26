@@ -1,4 +1,7 @@
 @extends('layouts.app')
+@push('head')
+    @vite('resources/css/member-dependant-id-card.css')
+@endpush
 @section('title', 'Dependant ID Card — '.$organization->name)
 @section('content')
 <div class="min-h-screen bg-slate-100 px-3 py-5 sm:px-4 sm:py-8" style="--org-primary: {{ $primaryColor }}">
@@ -52,19 +55,7 @@
         </div>
     </main>
 </div>
-<style>
-@media print {
-    @page { size: portrait; margin: 8mm; }
-    body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body * { visibility: hidden; }
-    #dependant-id-card, #dependant-id-card * { visibility: visible; }
-    #dependant-id-card {
-        position: absolute; inset: 0 auto auto 0; width: 86mm; max-width: 100%;
-        border: 0.5px solid #d1d5db !important; box-shadow: none !important;
-        -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
-    }
-}
-</style>
+
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script>
 async function downloadIdCardJpeg(elementId, filename, button) {

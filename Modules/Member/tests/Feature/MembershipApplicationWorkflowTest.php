@@ -421,7 +421,7 @@ class MembershipApplicationWorkflowTest extends TestCase
             $service->confirm(
                 application: $application->refresh(),
                 actor: $actor,
-                membershipNumber: 'MEM-DUPLICATE-PHONE',
+                membershipNumber: '1',
                 startsAt: '2026-10-05',
             );
 
@@ -485,7 +485,7 @@ class MembershipApplicationWorkflowTest extends TestCase
         $confirmed = $service->confirm(
             application: $application->refresh(),
             actor: $actor,
-            membershipNumber: 'MEM-TEST-001',
+            membershipNumber: '5',
             startsAt: '2026-10-05',
         );
 
@@ -496,7 +496,13 @@ class MembershipApplicationWorkflowTest extends TestCase
             now()->addYear()->toDateString(),
             $member->memberships()->latest('id')->firstOrFail()->ends_at->toDateString(),
         );
-        $this->assertSame('MEM-TEST-001', $member->membership_number);
+        $this->assertSame(
+            app(\Modules\Member\Services\MembershipNumberService::class)->normalizeManualNumber(
+                \Modules\Core\Models\Organization::query()->findOrFail($application->organization_id),
+                '5',
+            ),
+            $member->membership_number,
+        );
         $this->assertSame($member->id, $confirmed->member_id);
         $this->assertNotNull($member->unit_id);
         $this->assertSame('Asha M Nair', $actor->refresh()->name);

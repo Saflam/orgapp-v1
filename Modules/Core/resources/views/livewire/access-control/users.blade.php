@@ -1,7 +1,7 @@
 <div class="access-control-page">
     <div class="page-head"><div><p class="eyebrow">Access Control</p><h1>Organization users</h1><p class="muted">Search users registered with this organization and review their organization roles.</p></div></div>
     <section class="card">
-        <style>.access-user-filters{display:flex;flex-direction:row;gap:12px;flex-wrap:nowrap;align-items:center;margin-bottom:18px}.access-user-filters input{min-width:0;flex:1 1 auto}.access-user-filters select{flex:0 0 190px;min-width:170px}@media(max-width:560px){.access-user-filters{flex-wrap:wrap}.access-user-filters input,.access-user-filters select{flex:1 1 100%;width:100%}}</style>
+        
         <div class="toolbar access-user-filters" style="display:flex;flex-direction:row;gap:12px;flex-wrap:nowrap;align-items:center;margin-bottom:18px">
             <input type="search" wire:model.live.debounce.300ms="search" placeholder="Search name, email, or phone" aria-label="Search users" style="min-width:0;flex:1 1 auto">
             <select wire:model.live="status" aria-label="Membership status" style="flex:0 0 190px;min-width:170px"><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select>

@@ -14,7 +14,7 @@
     @endif
     @stack('head')
 </head>
-<body class="min-h-screen bg-stone-50 font-sans text-slate-900 antialiased">
+<body class="saradhi-app min-h-screen bg-stone-50 font-sans text-slate-900 antialiased">
     @yield('content')
     @stack('scripts')
 </body>

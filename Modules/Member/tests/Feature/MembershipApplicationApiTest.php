@@ -384,7 +384,7 @@ class MembershipApplicationApiTest extends TestCase
         $response = $this->postJson(
             $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/confirm"),
             [
-                'membership_number' => 'MEM-0100',
+                'membership_number' => '100',
                 'starts_at' => '2026-10-05',
             ],
         );
@@ -396,7 +396,7 @@ class MembershipApplicationApiTest extends TestCase
         $this->assertDatabaseHas('members', [
             'organization_id' => $organization->id,
             'user_id' => $applicant->id,
-            'membership_number' => 'MEM-0100',
+            'membership_number' => 'TOA-0100',
         ]);
 
         $member = \Modules\Member\Models\Member::query()->firstOrFail();
@@ -539,7 +539,7 @@ class MembershipApplicationApiTest extends TestCase
         $this->postJson(
             $this->organizationUrl($organization, "/api/v1/membership-applications/{$application->id}/confirm"),
             [
-                'membership_number' => 'MEM-ROLLBACK-01',
+                'membership_number' => '1',
                 'starts_at' => '2026-10-05',
             ],
         )->assertServerError();

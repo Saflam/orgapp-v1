@@ -87,9 +87,12 @@ class User extends Authenticatable implements HasMedia
 
     public function registerMediaCollections(): void
     {
+        // Profile photos are intentionally public for the member directory.
+        // Keep the global media disk private so identification documents and
+        // other sensitive media are not made public by configuration.
         $this->addMediaCollection('profile-photo')
             ->singleFile()
-            ->useDisk(config('media-library.disk_name'));
+            ->useDisk('public');
     }
 
     public function organizationMemberships(): HasMany
