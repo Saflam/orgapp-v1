@@ -1,3 +1,4 @@
+<div class="member-directory">
 <style>
 /* This page uses the application's own CSS so it remains styled without a Tailwind build. */
 .member-directory { display:grid; gap:24px; color:var(--ink,#172033); }
@@ -44,8 +45,6 @@
 @media(max-width:900px) { .member-directory .md-filters { grid-template-columns:minmax(150px,1.2fr) minmax(100px,.8fr) minmax(100px,.8fr); } .member-directory .md-search { grid-column:auto; } .member-directory .md-filter-actions { grid-column:3; justify-content:flex-end; } }
 @media(max-width:600px) { .member-directory .md-panel { padding:14px; } .member-directory .md-filters { grid-template-columns:1fr 1fr; } .member-directory .md-search { grid-column:1 / -1; } .member-directory .md-filter-actions { grid-column:1 / -1; justify-content:flex-start; } }
 </style>
-
-<div class="member-directory">
     <div class="md-header">
         <div>
             <h1 class="text-2xl font-bold text-slate-900">Members</h1>

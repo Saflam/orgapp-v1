@@ -15,6 +15,7 @@ class Membership extends Model
         'starts_at',
         'ends_at',
         'status',
+        'status_reason',
         'metadata',
     ];
 

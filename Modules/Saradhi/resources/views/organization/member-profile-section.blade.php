@@ -1,12 +1,10 @@
-<div class="flex justify-end">
-    <button type="button"
-        onclick="document.getElementById('saradhi-profile-edit').classList.toggle('hidden')"
-        class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-        Edit details
-    </button>
-</div>
+@php
+    // Optional module profile data may be absent for members without a saved
+    // Saradhi profile. Normalize it before rendering to avoid count(null).
+    $fields = is_iterable($fields ?? null) ? $fields : [];
+@endphp
 
-@if(count($fields))
+@if(count($fields) > 0)
     <dl class="mt-3 grid gap-3 sm:grid-cols-2">
         @foreach($fields as $field)
             <div class="rounded-lg bg-slate-50 p-3">

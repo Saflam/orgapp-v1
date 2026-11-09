@@ -26,6 +26,31 @@ Route::middleware(['auth', 'organization', 'organization.access'])
             ->whereNumber('member')
             ->middleware('module:Member')
             ->name('member.profile');
+        Route::get('/organization/members/{member}/dependants/{dependant}/photo', [AdminMemberProfileController::class, 'dependantPhoto'])
+            ->whereNumber('member')
+            ->whereNumber('dependant')
+            ->middleware('module:Member')
+            ->name('member.profile.dependant-photo');
+        Route::post('/organization/members/{member}/dependants', [AdminMemberProfileController::class, 'storeDependant'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.dependants.store');
+        Route::put('/organization/members/{member}/dependants/{dependant}', [AdminMemberProfileController::class, 'updateDependant'])
+            ->whereNumber('member')
+            ->whereNumber('dependant')
+            ->middleware('module:Member')
+            ->name('member.profile.dependants.update');
+        Route::delete('/organization/members/{member}/dependants/{dependant}', [AdminMemberProfileController::class, 'destroyDependant'])
+            ->whereNumber('member')
+            ->whereNumber('dependant')
+            ->middleware('module:Member')
+            ->name('member.profile.dependants.destroy');
+        Route::get('/organization/members/{member}/documents/{identification}/{side}', [AdminMemberProfileController::class, 'document'])
+            ->whereNumber('member')
+            ->whereNumber('identification')
+            ->whereIn('side', ['document', 'front', 'back'])
+            ->middleware('module:Member')
+            ->name('member.profile.document');
         Route::get('/organization/members/{member}/pdf', [AdminMemberProfileController::class, 'downloadPdf'])
             ->whereNumber('member')
             ->middleware('module:Member')
@@ -38,10 +63,23 @@ Route::middleware(['auth', 'organization', 'organization.access'])
             ->whereNumber('member')
             ->middleware('module:Member')
             ->name('member.profile.update');
+        Route::get('/organization/members/{member}/membership/edit', [AdminMemberProfileController::class, 'editMembership'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.membership.edit');
+        Route::put('/organization/members/{member}/membership', [AdminMemberProfileController::class, 'updateMembership'])
+            ->whereNumber('member')
+            ->middleware('module:Member')
+            ->name('member.profile.membership.update');
         Route::post('/organization/members/{member}/notes', [AdminMemberProfileController::class, 'storeNote'])
             ->whereNumber('member')
             ->middleware('module:Member')
             ->name('member.profile.notes.store');
+        Route::put('/organization/members/{member}/modules/{module}', [AdminMemberProfileController::class, 'updateModuleSection'])
+            ->whereNumber('member')
+            ->where('module', '[A-Za-z0-9_-]+')
+            ->middleware('module:Member')
+            ->name('member.profile.module.update');
         Route::get('/organization/membership-applications/{applicationId}/media/{mediaId}', [MembershipApplicationMediaController::class, 'show'])
             ->whereNumber('applicationId')
             ->whereNumber('mediaId')

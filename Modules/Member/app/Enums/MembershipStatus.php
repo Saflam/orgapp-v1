@@ -9,4 +9,6 @@ enum MembershipStatus: string
     case DORMANT = 'dormant';
     case EXPIRED = 'expired';
     case CANCELLED = 'cancelled';
+    case SUSPENDED = 'suspended';
+    case DECEASED = 'deceased';
 }

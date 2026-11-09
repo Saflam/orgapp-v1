@@ -9,6 +9,8 @@ use Modules\Member\Http\Controllers\Api\MembershipApplicationController;
 use Modules\Member\Http\Controllers\Api\MemberPaymentItemController;
 use Modules\Member\Http\Controllers\Api\MemberPaymentController;
 use Modules\Member\Http\Controllers\Api\MemberUnitTransferController;
+use Modules\Member\Http\Controllers\Api\MemberIdentificationController;
+use Modules\Member\Http\Controllers\Api\MemberPaymentHistoryController;
 
 Route::middleware([
     'auth',
@@ -137,6 +139,18 @@ Route::middleware([
 
     Route::middleware('permission:membership.payment.view')->group(function () {
         Route::get(
+            'organizations/{organization}/members/{member}/payments',
+            [MemberPaymentHistoryController::class, 'index']
+        )->name('member.payment-history.index');
+
+        Route::get(
+            'organizations/{organization}/members/{member}/payments/{payment}',
+            [MemberPaymentHistoryController::class, 'show']
+        )->name('member.payment-history.show');
+    });
+
+    Route::middleware('permission:membership.payment.view')->group(function () {
+        Route::get(
             'membership-payments/applications/pending',
             [MemberPaymentController::class, 'pendingApplications']
         )->name('membership-payment.applications.pending');
@@ -232,6 +246,11 @@ Route::middleware([
         )->name('member-dependant.show');
 
         Route::get(
+            'organizations/{organization}/members/{member}/dependants/{dependant}/photo',
+            [MemberDependantController::class, 'photo']
+        )->name('member-dependant.photo');
+
+        Route::get(
             'organizations/{organization}/members/{member}/dependant-relationships',
             [MemberDependantRelationshipController::class, 'index']
         )->name('member-dependant-relationship.index');
@@ -275,6 +294,11 @@ Route::middleware([
             [MemberDependantController::class, 'update']
         )->name('member-dependant.update');
 
+        Route::post(
+            'organizations/{organization}/members/{member}/dependants/{dependant}/photo',
+            [MemberDependantController::class, 'uploadPhoto']
+        )->name('member-dependant.photo.update');
+
         Route::delete(
             'organizations/{organization}/members/{member}/dependants/{dependant}',
             [MemberDependantController::class, 'destroy']
@@ -314,5 +338,61 @@ Route::middleware([
             'organizations/{organization}/members/{member}/relationships/{relationship}/end',
             [MemberRelationshipController::class, 'end']
         )->name('member-relationship.end');
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Member Identification Document API
+    |--------------------------------------------------------------------------
+    */
+
+    Route::middleware('permission:members.view')->group(function () {
+        Route::get(
+            'organizations/{organization}/members/{member}/identifications',
+            [MemberIdentificationController::class, 'index']
+        )->name('member.identification.index');
+
+        Route::get(
+            'organizations/{organization}/members/{member}/identifications/{identification}',
+            [MemberIdentificationController::class, 'show']
+        )->name('member.identification.show');
+
+        Route::get(
+            'organizations/{organization}/members/{member}/identifications/{identification}/proof/{side}',
+            [MemberIdentificationController::class, 'proof']
+        )->whereIn('side', ['document', 'front', 'back'])
+            ->name('member.identification.proof');
+    });
+
+    Route::middleware('permission:members.update')->group(function () {
+        Route::post(
+            'organizations/{organization}/members/{member}/identifications',
+            [MemberIdentificationController::class, 'store']
+        )->name('member.identification.store');
+
+        Route::put(
+            'organizations/{organization}/members/{member}/identifications/{identification}',
+            [MemberIdentificationController::class, 'update']
+        )->name('member.identification.update');
+
+        Route::post(
+            'organizations/{organization}/members/{member}/identifications/{identification}/proof/{side}',
+            [MemberIdentificationController::class, 'uploadProof']
+        )->whereIn('side', ['document', 'front', 'back'])
+            ->name('member.identification.proof.upload');
+
+        Route::delete(
+            'organizations/{organization}/members/{member}/identifications/{identification}/proof/{side}',
+            [MemberIdentificationController::class, 'deleteProof']
+        )->whereIn('side', ['document', 'front', 'back'])
+            ->name('member.identification.proof.delete');
+    });
+
+    Route::middleware('permission:members.delete')->group(function () {
+        Route::delete(
+            'organizations/{organization}/members/{member}/identifications/{identification}',
+            [MemberIdentificationController::class, 'destroy']
+        )->name('member.identification.destroy');
     });
 });

@@ -18,6 +18,7 @@ class MemberProfileResource extends JsonResource
             'name' => $this->user?->name,
             'email' => $this->user?->email,
             'phone' => $this->user?->phone,
+            'profile_photo_url' => $this->user?->getFirstMediaUrl('profile-photo') ?: null,
 
             'organization_id' => $this->organization_id,
             'unit_id' => $this->unit_id,

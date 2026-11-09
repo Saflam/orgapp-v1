@@ -16,11 +16,20 @@ class UpdateMemberProfileRequest extends FormRequest
     {
         $rules = [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'first_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'middle_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'gender' => ['sometimes', 'nullable', 'string', 'max:50'],
             'email' => ['sometimes', 'required', 'email', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'phone_country_iso2' => ['sometimes', 'nullable', 'string', 'size:2', 'alpha'],
             'date_of_birth' => ['sometimes', 'nullable', 'date'],
             'blood_group' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'home_contact' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'profession' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'company' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'company_address' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'photo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'whatsapp' => ['sometimes', 'nullable', 'string', 'max:50'],
             'whatsapp_country_iso2' => ['sometimes', 'nullable', 'string', 'size:2', 'alpha'],
             'whatsapp_calling_code' => ['sometimes', 'nullable', 'string', 'max:8'],
@@ -43,12 +52,12 @@ class UpdateMemberProfileRequest extends FormRequest
 
         // Country selectors are sent by the web profile form. Keep the API contract
         // backward-compatible for clients that still submit only the legacy phone field.
-        if (trim((string) $this->input('phone', '')) !== '' && filled($this->input('phone_country_iso2'))) {
+        if (trim((string) $this->input('phone', '')) !== '' && ! str_starts_with(trim((string) $this->input('phone')), '+') && filled($this->input('phone_country_iso2'))) {
             $rules['phone'][] = new ValidPhoneNumberForCountry(
                 (string) $this->input('phone_country_iso2'),
             );
         }
-        if (trim((string) $this->input('whatsapp', '')) !== '' && filled($this->input('whatsapp_country_iso2'))) {
+        if (trim((string) $this->input('whatsapp', '')) !== '' && ! str_starts_with(trim((string) $this->input('whatsapp')), '+') && filled($this->input('whatsapp_country_iso2'))) {
             $rules['whatsapp'][] = new ValidPhoneNumberForCountry(
                 (string) $this->input('whatsapp_country_iso2'),
             );

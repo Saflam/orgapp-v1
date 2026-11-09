@@ -33,6 +33,14 @@ class MemberProfileService
         array $data,
     ): Member {
         return DB::transaction(function () use ($member, $data) {
+            // Profile photos are stored in the user's existing single-file
+            // public profile-photo collection. Do not include the UploadedFile
+            // in mass-assigned user/detail attributes.
+            if (($data['photo'] ?? null) instanceof \Illuminate\Http\UploadedFile) {
+                $member->user
+                    ->addMedia($data['photo'])
+                    ->toMediaCollection('profile-photo');
+            }
             $userData = array_intersect_key(
                 $data,
                 array_flip([
@@ -49,7 +57,7 @@ class MemberProfileService
             ) {
                 $normalizedPhone = app(PhoneNumberNormalizer::class)->normalize(
                     (string) $userData['phone'],
-                    (string) $data['phone_country_iso2'],
+                    str_starts_with(trim((string) $userData['phone']), '+') ? null : (string) $data['phone_country_iso2'],
                 );
                 $userData['phone'] = $normalizedPhone['phone_e164'];
             }
@@ -61,7 +69,10 @@ class MemberProfileService
 
             $detailFields = array_intersect_key(
                 $data,
-                array_flip(['date_of_birth', 'blood_group', 'whatsapp', 'whatsapp_calling_code']),
+                array_flip([
+                    'first_name', 'middle_name', 'last_name', 'gender', 'date_of_birth', 'blood_group',
+                    'whatsapp', 'whatsapp_calling_code', 'home_contact', 'profession', 'company', 'company_address',
+                ]),
             );
             if (
                 array_key_exists('whatsapp', $detailFields)
@@ -70,7 +81,7 @@ class MemberProfileService
             ) {
                 $normalizedWhatsapp = app(PhoneNumberNormalizer::class)->normalize(
                     (string) $detailFields['whatsapp'],
-                    (string) $data['whatsapp_country_iso2'],
+                    str_starts_with(trim((string) $detailFields['whatsapp']), '+') ? null : (string) $data['whatsapp_country_iso2'],
                 );
                 $detailFields['whatsapp'] = $normalizedWhatsapp['national_number'];
                 $detailFields['whatsapp_calling_code'] = '+'.$normalizedWhatsapp['country_calling_code'];
@@ -83,6 +94,22 @@ class MemberProfileService
                 $addressesRelation = $member->user->addresses();
                 $requiredTypes = ['permanent', 'permanent_address', 'local', 'local_address', 'residential', 'residential_address', 'current', 'current_address'];
                 $normalizeType = static fn ($type): string => strtolower(str_replace([' ', '-'], '_', trim((string) $type)));
+                // Legacy records use variants such as "permanent_address" while
+                // the edit form submits canonical values such as "permanent".
+                // Compare the semantic type, not the raw database spelling.
+                $canonicalType = static function ($type) use ($normalizeType): string {
+                    $type = $normalizeType($type);
+
+                    if (in_array($type, ['permanent', 'permanent_address'], true)) {
+                        return 'permanent';
+                    }
+
+                    if (in_array($type, ['local', 'local_address', 'residential', 'residential_address', 'current', 'current_address'], true)) {
+                        return 'local';
+                    }
+
+                    return $type;
+                };
                 $existingAddresses = $addressesRelation->get()->keyBy('id');
 
                 foreach (($data['addresses'] ?? []) as $address) {
@@ -123,7 +150,7 @@ class MemberProfileService
                     }
 
                     if ($existing) {
-                        if ($isRequired && $normalizeType($values['address_type'] ?? $existing->address_type) !== $existingType) {
+                        if ($isRequired && $canonicalType($values['address_type'] ?? $existing->address_type) !== $canonicalType($existingType)) {
                             throw \Illuminate\Validation\ValidationException::withMessages([
                                 'addresses' => 'The type of permanent and local addresses cannot be changed.',
                             ]);
