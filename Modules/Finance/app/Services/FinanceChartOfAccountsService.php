@@ -51,7 +51,11 @@ class FinanceChartOfAccountsService
             throw new InvalidArgumentException('System-managed accounts cannot be edited here.');
         }
 
-        $this->assertParent($organization, $scope, $data['parent_id'] ?? null, $account->account_type, $account);
+        $parentId = array_key_exists('parent_id', $data)
+            ? $data['parent_id']
+            : $account->parent_id;
+
+        $this->assertParent($organization, $scope, $parentId, $account->account_type, $account);
         $code = strtoupper(trim((string) ($data['code'] ?? $account->code)));
         $duplicate = FinanceAccount::query()
             ->where('organization_id', $organization->id)
@@ -64,7 +68,7 @@ class FinanceChartOfAccountsService
         }
 
         $account->update([
-            'parent_id' => $data['parent_id'] ?? null,
+            'parent_id' => $parentId,
             'code' => $code,
             'name' => trim((string) ($data['name'] ?? $account->name)),
         ]);
