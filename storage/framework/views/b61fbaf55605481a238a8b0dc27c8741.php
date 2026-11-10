@@ -54,7 +54,19 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
                 <h2>Account balances</h2>
                 <p>As of <?php echo e(\Illuminate\Support\Carbon::parse($report['as_of_date'])->format('d M Y')); ?></p>
             </div>
-            <span class="finance-trial-balance__report-tag">CUMULATIVE</span>
+            <div class="finance-trial-balance__report-actions">
+                <span class="finance-trial-balance__report-tag">CUMULATIVE</span>
+                <a
+                    class="finance-trial-balance__export-button"
+                    href="<?php echo e(route('finance.reports.trial-balance.pdf', array_filter([
+                        'as_of_date' => $report['as_of_date'],
+                        'unit_id' => $this->unitId,
+                    ], static fn ($value) => $value !== null))); ?>"
+                >
+                    <span aria-hidden="true">↓</span>
+                    Export PDF
+                </a>
+            </div>
         </div>
 
         <div class="finance-trial-balance__table-wrap">
@@ -246,6 +258,44 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
         letter-spacing: .08em;
     }
 
+    .finance-trial-balance__report-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .finance-trial-balance__export-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 36px;
+        padding: 8px 12px;
+        border: 1px solid var(--ftb-brand);
+        border-radius: 8px;
+        background: var(--ftb-brand);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 750;
+        line-height: 1;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: filter .15s ease, transform .15s ease;
+    }
+
+    .finance-trial-balance__export-button:hover {
+        color: #fff;
+        filter: brightness(.94);
+        transform: translateY(-1px);
+    }
+
+    .finance-trial-balance__export-button:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--ftb-brand) 25%, transparent);
+        outline-offset: 2px;
+    }
+
     .finance-trial-balance__table-wrap {
         width: 100%;
         overflow-x: auto;
@@ -383,6 +433,11 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
         .finance-trial-balance__report-header {
             align-items: flex-start;
             padding: 17px 16px;
+        }
+
+        .finance-trial-balance__report-actions {
+            align-items: flex-end;
+            flex-direction: column;
         }
 
         .finance-trial-balance__table th,
