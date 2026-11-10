@@ -74,7 +74,22 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
 
                 </p>
             </div>
-            <span class="finance-income-statement__report-tag">PERIOD ACTIVITY</span>
+            <div class="finance-income-statement__report-actions">
+                <span class="finance-income-statement__report-tag">PERIOD ACTIVITY</span>
+                <a
+                    class="finance-income-statement__export-button"
+                    href="<?php echo e(route('finance.reports.income-statement.pdf', array_filter([
+                        'start_date' => $report['start_date'],
+                        'end_date' => $report['end_date'],
+                        'unit_id' => $unitId,
+                    ], fn ($value) => $value !== null && $value !== ''))); ?>"
+                    target="_blank"
+                    rel="noopener"
+                >
+                    <span aria-hidden="true">↓</span>
+                    Export PDF
+                </a>
+            </div>
         </div>
 
         <div class="finance-income-statement__sections">
@@ -248,6 +263,13 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
         color: var(--fis-muted);
         font-size: 12px;
     }
+    .finance-income-statement__report-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 9px;
+    }
     .finance-income-statement__report-tag {
         padding: 5px 9px;
         border: 1px solid var(--fis-line);
@@ -259,6 +281,23 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
         letter-spacing: .08em;
         white-space: nowrap;
     }
+    .finance-income-statement__export-button {
+        display: inline-flex;
+        min-height: 34px;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 7px 12px;
+        border: 1px solid var(--fis-brand);
+        border-radius: 8px;
+        background: var(--fis-brand);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 750;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .finance-income-statement__export-button:hover { filter: brightness(.95); color: #fff; }
     .finance-income-statement__sections { display: grid; gap: 22px; padding: 22px; }
     .finance-income-statement__account-section { min-width: 0; }
     .finance-income-statement__section-heading {
@@ -333,7 +372,8 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
     @media (max-width: 600px) {
         .finance-income-statement__filter-grid { grid-template-columns: 1fr; }
         .finance-income-statement__filter-card { padding: 16px; }
-        .finance-income-statement__report-header { align-items: flex-start; padding: 17px 16px; }
+        .finance-income-statement__report-header { align-items: flex-start; flex-direction: column; padding: 17px 16px; }
+        .finance-income-statement__report-actions { justify-content: flex-start; }
         .finance-income-statement__sections { padding: 16px; }
         .finance-income-statement__net-row { padding: 17px 16px; }
         .finance-income-statement__net-amount { font-size: 17px; }
