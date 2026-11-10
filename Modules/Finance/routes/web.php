@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Finance\Http\Controllers\FinanceBalanceSheetPdfController;
 use Modules\Finance\Http\Controllers\FinanceIncomeStatementPdfController;
 use Modules\Finance\Http\Controllers\FinanceTrialBalancePdfController;
 use Modules\Finance\Livewire\FinanceBalanceSheetReport;
@@ -26,4 +27,6 @@ Route::middleware(['auth', 'organization', 'organization.access', 'module:Financ
             ->name('finance.reports.trial-balance.pdf');
         Route::get('/organization/finance/reports/income-statement/pdf', FinanceIncomeStatementPdfController::class)
             ->name('finance.reports.income-statement.pdf');
+        Route::get('/organization/finance/reports/balance-sheet/pdf', FinanceBalanceSheetPdfController::class)
+            ->name('finance.reports.balance-sheet.pdf');
     });
