@@ -3,6 +3,7 @@
 namespace Modules\Finance\Services;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Modules\Core\Models\Organization;
 use Modules\Finance\Enums\FinancePeriodStatus;
 use Modules\Finance\Models\FinancePeriod;
@@ -10,10 +11,6 @@ use Modules\Finance\Models\FinanceScope;
 
 class FinancePeriodService
 {
-    /**
-     * Create a manually defined period. Existing callers retain the current
-     * behavior: manually created periods are opened immediately.
-     */
     public function create(
         Organization $organization,
         FinanceScope $scope,
@@ -35,12 +32,6 @@ class FinancePeriodService
         ]);
     }
 
-    /**
-     * Generate a period from an organization's recurring month/day pattern.
-     * Generated periods start as drafts and require an explicit open action.
-     *
-     * Pattern keys: start_month, start_day, end_month, end_day.
-     */
     public function generateDraft(
         Organization $organization,
         FinanceScope $scope,
@@ -101,20 +92,27 @@ class FinancePeriodService
 
     public function open(FinancePeriod $period): FinancePeriod
     {
-        if ($period->status === FinancePeriodStatus::CLOSED) {
-            throw new \InvalidArgumentException('A closed financial period cannot be reopened.');
-        }
+        return DB::transaction(function () use ($period): FinancePeriod {
+            $lockedPeriod = FinancePeriod::query()
+                ->whereKey($period->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($period->status === FinancePeriodStatus::OPEN) {
-            return $period;
-        }
+            if ($lockedPeriod->status === FinancePeriodStatus::CLOSED) {
+                throw new \InvalidArgumentException('A closed financial period cannot be reopened.');
+            }
 
-        $period->update([
-            'status' => FinancePeriodStatus::OPEN,
-            'closed_at' => null,
-        ]);
+            if ($lockedPeriod->status === FinancePeriodStatus::OPEN) {
+                return $lockedPeriod;
+            }
 
-        return $period->refresh();
+            $lockedPeriod->update([
+                'status' => FinancePeriodStatus::OPEN,
+                'closed_at' => null,
+            ]);
+
+            return $lockedPeriod->refresh();
+        });
     }
 
     public function update(
@@ -123,49 +121,65 @@ class FinancePeriodService
         FinancePeriod $period,
         array $data,
     ): FinancePeriod {
-        $this->assertScopeBelongsToOrganization($organization, $scope);
+        return DB::transaction(function () use ($organization, $scope, $period, $data): FinancePeriod {
+            $this->assertScopeBelongsToOrganization($organization, $scope);
 
-        if ($period->organization_id !== $organization->id || $period->finance_scope_id !== $scope->id) {
-            throw new \InvalidArgumentException('The financial period does not belong to this organization scope.');
-        }
+            $lockedPeriod = FinancePeriod::query()
+                ->whereKey($period->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if (! $period->isOpen()) {
-            throw new \InvalidArgumentException('Only open financial periods can be edited.');
-        }
+            if ($lockedPeriod->organization_id !== $organization->id
+                || $lockedPeriod->finance_scope_id !== $scope->id) {
+                throw new \InvalidArgumentException('The financial period does not belong to this organization scope.');
+            }
 
-        if ($period->journals()->exists()) {
-            throw new \InvalidArgumentException('A financial period with posted journals cannot be edited.');
-        }
+            if (! $lockedPeriod->isOpen()) {
+                throw new \InvalidArgumentException('Only open financial periods can be edited.');
+            }
 
-        $this->assertValidDateRange($data['starts_on'], $data['ends_on']);
-        $this->assertNoOverlap($organization, $scope, $data['starts_on'], $data['ends_on'], $period->id);
+            if ($lockedPeriod->journals()->exists()) {
+                throw new \InvalidArgumentException('A financial period with posted journals cannot be edited.');
+            }
 
-        $period->update([
-            'name' => $data['name'],
-            'code' => strtoupper(trim($data['code'])),
-            'starts_on' => $data['starts_on'],
-            'ends_on' => $data['ends_on'],
-        ]);
+            $this->assertValidDateRange($data['starts_on'], $data['ends_on']);
+            $this->assertNoOverlap($organization, $scope, $data['starts_on'], $data['ends_on'], $lockedPeriod->id);
 
-        return $period->refresh();
+            $lockedPeriod->update([
+                'name' => $data['name'],
+                'code' => strtoupper(trim($data['code'])),
+                'starts_on' => $data['starts_on'],
+                'ends_on' => $data['ends_on'],
+            ]);
+
+            return $lockedPeriod->refresh();
+        });
     }
 
     public function close(FinancePeriod $period): FinancePeriod
     {
-        if ($period->isClosed()) {
-            return $period;
-        }
+        return DB::transaction(function () use ($period): FinancePeriod {
+            // Posting takes this same lock before checking period status.
+            $lockedPeriod = FinancePeriod::query()
+                ->whereKey($period->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($period->status === FinancePeriodStatus::DRAFT) {
-            throw new \InvalidArgumentException('A draft financial period must be opened before it can be closed.');
-        }
+            if ($lockedPeriod->isClosed()) {
+                return $lockedPeriod;
+            }
 
-        $period->update([
-            'status' => FinancePeriodStatus::CLOSED,
-            'closed_at' => now(),
-        ]);
+            if ($lockedPeriod->status === FinancePeriodStatus::DRAFT) {
+                throw new \InvalidArgumentException('A draft financial period must be opened before it can be closed.');
+            }
 
-        return $period->refresh();
+            $lockedPeriod->update([
+                'status' => FinancePeriodStatus::CLOSED,
+                'closed_at' => now(),
+            ]);
+
+            return $lockedPeriod->refresh();
+        });
     }
 
     public function assertOpen(FinancePeriod $period): void

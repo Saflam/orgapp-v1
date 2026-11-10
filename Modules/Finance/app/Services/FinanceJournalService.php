@@ -19,66 +19,61 @@ class FinanceJournalService
         FinancePeriod $period,
         array $data,
     ): FinanceJournal {
-        $this->assertScopeBelongsToOrganization($organization, $scope);
-        if (! $scope->isOrganizationScope()) {
-            throw new \InvalidArgumentException('Finance journals must use the organization-wide ledger.');
-        }
-        $this->assertPeriodBelongsToScope($period, $scope, $organization);
+        return DB::transaction(function () use ($organization, $scope, $period, $data): FinanceJournal {
+            $this->assertScopeBelongsToOrganization($organization, $scope);
 
-        $unitId = $data['unit_id'] ?? null;
-        if ($unitId !== null && ! $organization->units()->whereKey($unitId)->exists()) {
-            throw new \InvalidArgumentException('The journal unit does not belong to the organization.');
-        }
-        app(FinancePeriodService::class)->assertOpen($period);
+            if (! $scope->isOrganizationScope()) {
+                throw new \InvalidArgumentException('Finance journals must use the organization-wide ledger.');
+            }
 
-        $transactionDate = $data['transaction_date'];
+            // Always lock and validate the current database row, not a potentially stale model.
+            $lockedPeriod = FinancePeriod::query()
+                ->whereKey($period->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($transactionDate < $period->starts_on->toDateString()
-            || $transactionDate > $period->ends_on->toDateString()) {
-            throw new \InvalidArgumentException(
-                'The journal transaction date is outside the financial period.'
-            );
-        }
+            $this->assertPeriodBelongsToScope($lockedPeriod, $scope, $organization);
+            app(FinancePeriodService::class)->assertOpen($lockedPeriod);
 
-        $lines = $data['lines'] ?? [];
+            $transactionDate = $data['transaction_date'];
+            if ($transactionDate < $lockedPeriod->starts_on->toDateString()
+                || $transactionDate > $lockedPeriod->ends_on->toDateString()) {
+                throw new \InvalidArgumentException(
+                    'The journal transaction date is outside the financial period.'
+                );
+            }
 
-        if (count($lines) < 2) {
-            throw new \InvalidArgumentException(
-                'A journal must contain at least two lines.'
-            );
-        }
+            $unitId = $data['unit_id'] ?? null;
+            if ($unitId !== null && ! $organization->units()->whereKey($unitId)->exists()) {
+                throw new \InvalidArgumentException('The journal unit does not belong to the organization.');
+            }
 
-        $preparedLines = [];
-        $totalDebit = '0.0000';
-        $totalCredit = '0.0000';
+            $lines = $data['lines'] ?? [];
+            if (count($lines) < 2) {
+                throw new \InvalidArgumentException('A journal must contain at least two lines.');
+            }
 
-        foreach ($lines as $line) {
-            $prepared = $this->prepareLine($organization, $scope, $line);
+            $preparedLines = [];
+            $totalDebit = '0.0000';
+            $totalCredit = '0.0000';
 
-            $totalDebit = $this->addDecimals($totalDebit, $prepared['debit']);
-            $totalCredit = $this->addDecimals($totalCredit, $prepared['credit']);
-            $preparedLines[] = $prepared;
-        }
+            foreach ($lines as $line) {
+                $prepared = $this->prepareLine($organization, $scope, $line);
+                $totalDebit = $this->addDecimals($totalDebit, $prepared['debit']);
+                $totalCredit = $this->addDecimals($totalCredit, $prepared['credit']);
+                $preparedLines[] = $prepared;
+            }
 
-        if ($this->compareDecimals($totalDebit, $totalCredit) !== 0) {
-            throw new \InvalidArgumentException(
-                'The journal is not balanced. Total debits must equal total credits.'
-            );
-        }
+            if ($this->compareDecimals($totalDebit, $totalCredit) !== 0) {
+                throw new \InvalidArgumentException(
+                    'The journal is not balanced. Total debits must equal total credits.'
+                );
+            }
 
-        return DB::transaction(function () use (
-            $organization,
-            $scope,
-            $period,
-            $data,
-            $transactionDate,
-            $preparedLines,
-            $unitId,
-        ): FinanceJournal {
             $journal = FinanceJournal::create([
                 'organization_id' => $organization->id,
                 'finance_scope_id' => $scope->id,
-                'finance_period_id' => $period->id,
+                'finance_period_id' => $lockedPeriod->id,
                 'unit_id' => $unitId,
                 'journal_number' => $data['journal_number'] ?? $this->generateJournalNumber(),
                 'transaction_date' => $transactionDate,
@@ -102,26 +97,25 @@ class FinanceJournalService
         FinanceScope $scope,
         array $line,
     ): array {
+        // Called only inside post()'s transaction. This serializes posting against
+        // account deactivation, which locks the same account row.
         $accountId = $line['finance_account_id'] ?? null;
-        $account = FinanceAccount::query()->find($accountId);
+        $account = FinanceAccount::query()
+            ->whereKey($accountId)
+            ->lockForUpdate()
+            ->first();
 
-        if (!$account) {
-            throw new \InvalidArgumentException(
-                'The journal account does not exist.'
-            );
+        if (! $account) {
+            throw new \InvalidArgumentException('The journal account does not exist.');
         }
 
         if ($account->organization_id !== $organization->id
             || $account->finance_scope_id !== $scope->id) {
-            throw new \InvalidArgumentException(
-                'The journal account does not belong to the finance scope.'
-            );
+            throw new \InvalidArgumentException('The journal account does not belong to the finance scope.');
         }
 
-        if (!$account->is_active) {
-            throw new \InvalidArgumentException(
-                'The journal account is inactive.'
-            );
+        if (! $account->is_active) {
+            throw new \InvalidArgumentException('The journal account is inactive.');
         }
 
         $debit = $this->normalizeAmount($line['debit'] ?? 0);
@@ -155,7 +149,7 @@ class FinanceJournalService
             $value = number_format($value, 4, '.', '');
         }
 
-        if (!is_string($value) || !preg_match('/^\d+(?:\.\d{1,4})?$/', $value)) {
+        if (! is_string($value) || ! preg_match('/^\d+(?:\.\d{1,4})?$/', $value)) {
             throw new \InvalidArgumentException(
                 'Journal amounts must be non-negative decimal numbers with up to four decimal places.'
             );
@@ -226,9 +220,7 @@ class FinanceJournalService
         FinanceScope $scope,
     ): void {
         if ($scope->organization_id !== $organization->id) {
-            throw new \InvalidArgumentException(
-                'The finance scope does not belong to the organization.'
-            );
+            throw new \InvalidArgumentException('The finance scope does not belong to the organization.');
         }
     }
 
@@ -239,7 +231,6 @@ class FinanceJournalService
     ): void {
         $periodScope = $period->scope;
 
-        // Both journal ledger and period are organization-wide and must use the same scope.
         if ($period->organization_id !== $organization->id
             || $period->finance_scope_id !== $scope->id
             || ! $periodScope

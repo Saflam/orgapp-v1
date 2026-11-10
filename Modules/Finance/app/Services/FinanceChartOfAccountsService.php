@@ -2,6 +2,7 @@
 
 namespace Modules\Finance\Services;
 
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Organization;
 use Modules\Finance\Enums\FinanceAccountType;
@@ -52,10 +53,7 @@ class FinanceChartOfAccountsService
             throw new InvalidArgumentException('System-managed accounts cannot be edited here.');
         }
 
-        $parentId = array_key_exists('parent_id', $data)
-            ? $data['parent_id']
-            : $account->parent_id;
-
+        $parentId = array_key_exists('parent_id', $data) ? $data['parent_id'] : $account->parent_id;
         $this->assertParent($organization, $scope, $parentId, $account->account_type, $account);
         $code = strtoupper(trim((string) ($data['code'] ?? $account->code)));
         $duplicate = FinanceAccount::query()
@@ -79,28 +77,39 @@ class FinanceChartOfAccountsService
 
     public function deactivate(Organization $organization, FinanceScope $scope, FinanceAccount $account): void
     {
-        $this->assertOrganizationScope($organization, $scope);
-        $this->assertAccountBelongsToChart($organization, $scope, $account);
-        if ($account->is_system_managed) {
-            throw new InvalidArgumentException('System-managed accounts cannot be deactivated here.');
-        }
-        if ($account->children()->where('is_active', true)->exists()) {
-            throw new InvalidArgumentException('Move or deactivate active child accounts before deactivating this account.');
-        }
-        if (FinanceJournalLine::query()->where('finance_account_id', $account->id)->exists()) {
-            throw new InvalidArgumentException('An account used by a journal cannot be deactivated.');
-        }
-        if (FinanceTaxRate::query()
-            ->where('is_active', true)
-            ->where(function ($query) use ($account): void {
-                $query->where('sales_account_id', $account->id)
-                    ->orWhere('purchase_account_id', $account->id);
-            })
-            ->exists()) {
-            throw new InvalidArgumentException('An account mapped to an active tax rate cannot be deactivated.');
-        }
+        DB::transaction(function () use ($organization, $scope, $account): void {
+            $this->assertOrganizationScope($organization, $scope);
 
-        $account->update(['is_active' => false]);
+            // Match journal posting's account-row lock so an account cannot be
+            // deactivated while a journal is being posted against it.
+            $lockedAccount = FinanceAccount::query()
+                ->whereKey($account->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->assertAccountBelongsToChart($organization, $scope, $lockedAccount);
+
+            if ($lockedAccount->is_system_managed) {
+                throw new InvalidArgumentException('System-managed accounts cannot be deactivated here.');
+            }
+            if ($lockedAccount->children()->where('is_active', true)->exists()) {
+                throw new InvalidArgumentException('Move or deactivate active child accounts before deactivating this account.');
+            }
+            if (FinanceJournalLine::query()->where('finance_account_id', $lockedAccount->id)->exists()) {
+                throw new InvalidArgumentException('An account used by a journal cannot be deactivated.');
+            }
+            if (FinanceTaxRate::query()
+                ->where('is_active', true)
+                ->where(function ($query) use ($lockedAccount): void {
+                    $query->where('sales_account_id', $lockedAccount->id)
+                        ->orWhere('purchase_account_id', $lockedAccount->id);
+                })
+                ->exists()) {
+                throw new InvalidArgumentException('An account mapped to an active tax rate cannot be deactivated.');
+            }
+
+            $lockedAccount->update(['is_active' => false]);
+        });
     }
 
     private function assertParent(Organization $organization, FinanceScope $scope, ?int $parentId, FinanceAccountType $type, ?FinanceAccount $account = null): void
