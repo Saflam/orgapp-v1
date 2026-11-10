@@ -47,6 +47,7 @@ class FinanceAccountProvisioningService
                 'code' => $definition['code'],
             ],
             [
+                'parent_id' => $definition['parent_id'] ?? null,
                 'name' => $definition['name'],
                 'account_type' => $type,
                 'normal_balance' => $balance,
