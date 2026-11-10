@@ -20,6 +20,8 @@ class FinanceRoleProvider implements RoleProvider
                     'finance.period.manage',
                     'finance.account.view',
                     'finance.account.manage',
+                    'finance.journal.view',
+                    'finance.journal.post',
                     'finance.tax.view',
                     'finance.tax.manage',
                     'finance.item.view',

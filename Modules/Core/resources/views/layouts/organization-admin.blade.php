@@ -22,6 +22,7 @@
     $canViewFinancePeriods = false;
     $canViewFinanceAccounts = false;
     $canViewFinanceTaxes = false;
+    $canViewFinanceJournals = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -42,6 +43,12 @@
             && \Illuminate\Support\Facades\Route::has('finance.taxes')
             && ($membershipAuthorization->can($layoutUser, 'finance.tax.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'finance.tax.manage', $membershipOrganizationContext));
+        $canViewFinanceJournals = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.journals')
+            && (
+                $membershipAuthorization->can($layoutUser, 'finance.journal.view', $membershipOrganizationContext)
+                || $membershipAuthorization->can($layoutUser, 'finance.journal.post', $membershipOrganizationContext)
+            );
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -189,15 +196,16 @@
                         </div>
                     </details>
                 @endif
-                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes)
-                    @php($financeNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
+                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals)
+                    @php($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
+                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals'))
                     <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
                         </summary>
                         <div class="nav-sublist">
-                            <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
-                                <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
+                            <details class="nav-group" {{ $financeSettingsNavActive ? 'open' : '' }}>
+                                <summary class="nav-group-toggle {{ $financeSettingsNavActive ? 'active' : '' }}">
                                     <span class="nav-icon" aria-hidden="true">⚙</span><span>Account Settings</span><span class="nav-chevron" aria-hidden="true"></span>
                                 </summary>
                                 <div class="nav-sublist">
@@ -212,6 +220,11 @@
                                     @endif
                                 </div>
                             </details>
+                            @if ($canViewFinanceJournals)
+                                <a class="nav-link {{ request()->routeIs('finance.journals') ? 'active' : '' }}" href="{{ route('finance.journals') }}">
+                                    <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>
+                                </a>
+                            @endif
                         </div>
                     </details>
                 @endif

@@ -1,8 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Finance\Livewire\FinancePeriodManagement;
 use Modules\Finance\Livewire\FinanceChartOfAccountsManagement;
+use Modules\Finance\Livewire\FinanceJournalManagement;
+use Modules\Finance\Livewire\FinancePeriodManagement;
 use Modules\Finance\Livewire\FinanceTaxConfigurationManagement;
 
 Route::middleware(['auth', 'organization', 'organization.access', 'module:Finance'])
@@ -10,4 +11,5 @@ Route::middleware(['auth', 'organization', 'organization.access', 'module:Financ
         Route::get('/organization/finance/accounts', FinanceChartOfAccountsManagement::class)->name('finance.accounts');
         Route::get('/organization/finance/periods', FinancePeriodManagement::class)->name('finance.periods');
         Route::get('/organization/finance/taxes', FinanceTaxConfigurationManagement::class)->name('finance.taxes');
+        Route::get('/organization/finance/journals', FinanceJournalManagement::class)->name('finance.journals');
     });

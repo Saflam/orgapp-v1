@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Models\Organization;
+use Modules\Core\Models\Unit;
 use Modules\Finance\Enums\FinanceJournalStatus;
 use RuntimeException;
 

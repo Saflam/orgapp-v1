@@ -1,0 +1,265 @@
+<?php
+
+namespace Modules\Finance\Livewire;
+
+use App\Support\Organization\CurrentOrganization;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+use Livewire\Component;
+use Modules\Core\Data\AuthorizationContext;
+use Modules\Core\Models\Organization;
+use Modules\Core\Services\AuthorizationService;
+use Modules\Finance\Enums\FinancePeriodStatus;
+use Modules\Finance\Models\FinanceAccount;
+use Modules\Finance\Models\FinanceJournal;
+use Modules\Finance\Models\FinancePeriod;
+use Modules\Finance\Services\FinanceJournalService;
+use Modules\Finance\Services\FinanceScopeService;
+use InvalidArgumentException;
+
+class FinanceJournalManagement extends Component
+{
+    public Organization $organization;
+
+    public string $transactionDate = '';
+    public ?int $periodId = null;
+    public ?int $unitId = null;
+    public string $description = '';
+    public array $lines = [];
+
+    public string $search = '';
+    public ?int $filterPeriodId = null;
+    public ?int $filterUnitId = null;
+    public string $fromDate = '';
+    public string $toDate = '';
+
+    public string $successMessage = '';
+
+    public function mount(
+        CurrentOrganization $currentOrganization,
+        AuthorizationService $authorization,
+    ): void {
+        $this->organization = $currentOrganization->get();
+
+        abort_unless(
+            $this->organization instanceof Organization && $this->organization->exists,
+            404,
+        );
+
+        $this->transactionDate = now()->toDateString();
+        $this->resetEntryForm();
+        $this->ensureCanView($authorization);
+    }
+
+    public function addLine(): void
+    {
+        if (count($this->lines) >= 50) {
+            throw ValidationException::withMessages([
+                'lines' => 'A journal cannot contain more than 50 lines.',
+            ]);
+        }
+
+        $this->lines[] = $this->emptyLine();
+    }
+
+    public function removeLine(int $index): void
+    {
+        if (count($this->lines) <= 2) {
+            throw ValidationException::withMessages([
+                'lines' => 'A journal must contain at least two lines.',
+            ]);
+        }
+
+        if (array_key_exists($index, $this->lines)) {
+            unset($this->lines[$index]);
+            $this->lines = array_values($this->lines);
+        }
+    }
+
+    public function postJournal(
+        FinanceJournalService $journals,
+        FinanceScopeService $scopes,
+        AuthorizationService $authorization,
+    ): void {
+        $this->successMessage = '';
+        $this->ensureCanPost($authorization);
+
+        $validated = $this->validate([
+            'transactionDate' => ['required', 'date_format:Y-m-d'],
+            'periodId' => ['required', 'integer'],
+            'unitId' => ['nullable', 'integer'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'lines' => ['required', 'array', 'min:2', 'max:50'],
+            'lines.*.finance_account_id' => ['required', 'integer'],
+            'lines.*.description' => ['nullable', 'string', 'max:500'],
+            'lines.*.debit' => ['required', 'numeric', 'min:0'],
+            'lines.*.credit' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $scope = $scopes->organizationScope($this->organization);
+
+        $period = FinancePeriod::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->findOrFail($validated['periodId']);
+
+        $lines = array_map(
+            fn (array $line): array => [
+                'finance_account_id' => (int) $line['finance_account_id'],
+                'description' => blank($line['description'] ?? null) ? null : $line['description'],
+                'debit' => $line['debit'],
+                'credit' => $line['credit'],
+            ],
+            $validated['lines'],
+        );
+
+        try {
+            $journal = $journals->post($this->organization, $scope, $period, [
+                'transaction_date' => $validated['transactionDate'],
+                'unit_id' => $validated['unitId'] ?: null,
+                'description' => blank($validated['description'] ?? null) ? null : $validated['description'],
+                'lines' => $lines,
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'journal' => $exception->getMessage(),
+            ]);
+        }
+
+        $this->successMessage = sprintf(
+            'Journal %s posted successfully.',
+            $journal->journal_number,
+        );
+
+        $this->resetEntryForm();
+    }
+
+    public function resetEntryForm(): void
+    {
+        $this->periodId = null;
+        $this->unitId = null;
+        $this->description = '';
+        $this->lines = [
+            $this->emptyLine(),
+            $this->emptyLine(),
+        ];
+        $this->resetValidation();
+    }
+
+    public function render(
+        AuthorizationService $authorization,
+        FinanceScopeService $scopes,
+    ): View {
+        $this->ensureCanView($authorization);
+
+        $scope = $scopes->organizationScope($this->organization);
+
+        $accounts = FinanceAccount::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get();
+
+        $openPeriods = FinancePeriod::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->where('status', FinancePeriodStatus::OPEN->value)
+            ->orderByDesc('starts_on')
+            ->get();
+
+        $allPeriods = FinancePeriod::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->orderByDesc('starts_on')
+            ->get();
+
+        $units = $this->organization->units()
+            ->orderBy('name')
+            ->get();
+
+        $query = FinanceJournal::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->with(['period', 'unit', 'lines.account'])
+            ->withCount('lines')
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('id');
+
+        if (trim($this->search) !== '') {
+            $search = trim($this->search);
+            $query->where(function ($builder) use ($search): void {
+                $builder
+                    ->where('journal_number', 'like', '%' . $search . '%')
+                    ->orWhere('description', 'like', '%' . $search . '%');
+            });
+        }
+
+        if ($this->filterPeriodId) {
+            $query->where('finance_period_id', $this->filterPeriodId);
+        }
+
+        if ($this->filterUnitId) {
+            $query->where('unit_id', $this->filterUnitId);
+        }
+
+        if ($this->fromDate !== '') {
+            $query->whereDate('transaction_date', '>=', $this->fromDate);
+        }
+
+        if ($this->toDate !== '') {
+            $query->whereDate('transaction_date', '<=', $this->toDate);
+        }
+
+        $journalEntries = $query->limit(100)->get();
+
+        return view('finance::livewire.journals.manage', [
+            'accounts' => $accounts,
+            'openPeriods' => $openPeriods,
+            'allPeriods' => $allPeriods,
+            'units' => $units,
+            'journalEntries' => $journalEntries,
+            'draftDebitTotal' => collect($this->lines)->sum(fn (array $line): float => (float) ($line['debit'] ?? 0)),
+            'draftCreditTotal' => collect($this->lines)->sum(fn (array $line): float => (float) ($line['credit'] ?? 0)),
+            'canPost' => $this->can($authorization, 'finance.journal.post'),
+        ])->layout('core::layouts.organization-admin', [
+            'pageTitle' => 'Journal Entries',
+            'layoutOrganization' => $this->organization,
+        ]);
+    }
+
+    private function emptyLine(): array
+    {
+        return [
+            'finance_account_id' => '',
+            'description' => '',
+            'debit' => '0.0000',
+            'credit' => '0.0000',
+        ];
+    }
+
+    private function ensureCanView(AuthorizationService $authorization): void
+    {
+        abort_unless(
+            $this->can($authorization, 'finance.journal.view')
+                || $this->can($authorization, 'finance.journal.post'),
+            403,
+        );
+    }
+
+    private function ensureCanPost(AuthorizationService $authorization): void
+    {
+        abort_unless($this->can($authorization, 'finance.journal.post'), 403);
+    }
+
+    private function can(AuthorizationService $authorization, string $permission): bool
+    {
+        $user = auth()->user();
+
+        return $user !== null && $this->organization->exists && $authorization->can(
+            $user,
+            $permission,
+            new AuthorizationContext((int) $this->organization->id),
+        );
+    }
+}
