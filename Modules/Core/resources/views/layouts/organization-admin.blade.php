@@ -24,6 +24,7 @@
     $canViewFinanceTaxes = false;
     $canViewFinanceJournals = false;
     $canViewFinanceTrialBalance = false;
+    $canViewFinanceIncomeStatement = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -52,6 +53,9 @@
             );
         $canViewFinanceTrialBalance = $financeModuleEnabled
             && \Illuminate\Support\Facades\Route::has('finance.reports.trial-balance')
+            && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
+        $canViewFinanceIncomeStatement = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.reports.income-statement')
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
@@ -128,7 +132,7 @@
     <title>{{ $pageTitle ?? 'Admin' }} · {{ $brandingOrganization?->name ?? 'Saflivo' }}</title>
     @vite(['resources/css/app.css', 'Modules/Core/resources/css/organization-admin.css', 'resources/js/app.js'])
     @livewireStyles
-    
+
 </head>
 <body class="saradhi-admin">
 <div class="app-shell">
@@ -200,9 +204,9 @@
                         </div>
                     </details>
                 @endif
-                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceTrialBalance)
+                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals)
                     @php($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
-                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals', 'finance.reports.trial-balance'))
+                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals'))
                     <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -229,9 +233,24 @@
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>
                                 </a>
                             @endif
+                        </div>
+                    </details>
+                @endif
+                @if ($canViewFinanceTrialBalance || $canViewFinanceIncomeStatement)
+                    @php($reportsNavActive = request()->routeIs('finance.reports.*'))
+                    <details class="nav-group" {{ $reportsNavActive ? 'open' : '' }}>
+                        <summary class="nav-group-toggle {{ $reportsNavActive ? 'active' : '' }}">
+                            <span class="nav-icon" aria-hidden="true">▤</span><span>Reports</span><span class="nav-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="nav-sublist">
                             @if ($canViewFinanceTrialBalance)
                                 <a class="nav-link {{ request()->routeIs('finance.reports.trial-balance') ? 'active' : '' }}" href="{{ route('finance.reports.trial-balance') }}">
                                     <span class="nav-icon" aria-hidden="true">▦</span><span>Trial Balance</span>
+                                </a>
+                            @endif
+                            @if ($canViewFinanceIncomeStatement)
+                                <a class="nav-link {{ request()->routeIs('finance.reports.income-statement') ? 'active' : '' }}" href="{{ route('finance.reports.income-statement') }}">
+                                    <span class="nav-icon" aria-hidden="true">▤</span><span>Income Statement</span>
                                 </a>
                             @endif
                         </div>
