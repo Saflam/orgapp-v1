@@ -15,11 +15,17 @@ use Modules\Finance\Models\FinanceTaxRate;
 
 class FinanceChartOfAccountsService
 {
+    private const CASH_FLOW_CATEGORIES = ['operating', 'investing', 'financing'];
+
     public function createManual(Organization $organization, FinanceScope $scope, array $data): FinanceAccount
     {
         return DB::transaction(function () use ($organization, $scope, $data): FinanceAccount {
             $this->assertOrganizationScope($organization, $scope);
             $type = $this->accountType($data['account_type'] ?? null);
+            $isCashAccount = $this->cashAccountFlag($data['is_cash_account'] ?? false);
+            $cashFlowCategory = $this->cashFlowCategory($data['cash_flow_category'] ?? null);
+            $this->assertCashFlowConfiguration($type, $isCashAccount, $cashFlowCategory);
+
             $parentId = isset($data['parent_id']) ? (int) $data['parent_id'] : null;
             $this->assertParent($organization, $scope, $parentId, $type);
 
@@ -43,6 +49,8 @@ class FinanceChartOfAccountsService
                 'source_type' => null,
                 'source_id' => null,
                 'is_active' => true,
+                'is_cash_account' => $isCashAccount,
+                'cash_flow_category' => $cashFlowCategory,
                 'metadata' => [],
             ]);
         });
@@ -84,6 +92,17 @@ class FinanceChartOfAccountsService
             } else {
                 $this->assertParent($organization, $scope, $parentId, $lockedAccount->account_type, $lockedAccount);
             }
+
+            // Account type is intentionally immutable. Cash-flow settings are
+            // merged with persisted values so partial updates preserve them.
+            $isCashAccount = array_key_exists('is_cash_account', $data)
+                ? $this->cashAccountFlag($data['is_cash_account'])
+                : (bool) $lockedAccount->is_cash_account;
+            $cashFlowCategory = array_key_exists('cash_flow_category', $data)
+                ? $this->cashFlowCategory($data['cash_flow_category'])
+                : $lockedAccount->cash_flow_category;
+            $this->assertCashFlowConfiguration($lockedAccount->account_type, $isCashAccount, $cashFlowCategory);
+
             $code = strtoupper(trim((string) ($data['code'] ?? $lockedAccount->code)));
             $duplicate = FinanceAccount::query()
                 ->where('organization_id', $organization->id)
@@ -99,6 +118,8 @@ class FinanceChartOfAccountsService
                 'parent_id' => $parentId,
                 'code' => $code,
                 'name' => trim((string) ($data['name'] ?? $lockedAccount->name)),
+                'is_cash_account' => $isCashAccount,
+                'cash_flow_category' => $cashFlowCategory,
             ]);
 
             return $lockedAccount->refresh();
@@ -139,6 +160,39 @@ class FinanceChartOfAccountsService
 
             $lockedAccount->update(['is_active' => false]);
         });
+    }
+
+    private function cashAccountFlag(mixed $value): bool
+    {
+        if (! in_array($value, [true, false, 1, 0, '1', '0'], true)) {
+            throw new InvalidArgumentException('The cash account setting must be true or false.');
+        }
+
+        return in_array($value, [true, 1, '1'], true);
+    }
+
+    private function cashFlowCategory(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (! is_string($value) || ! in_array($value, self::CASH_FLOW_CATEGORIES, true)) {
+            throw new InvalidArgumentException('Choose a valid cash flow category.');
+        }
+
+        return $value;
+    }
+
+    private function assertCashFlowConfiguration(FinanceAccountType $type, bool $isCashAccount, ?string $category): void
+    {
+        if ($isCashAccount && $type !== FinanceAccountType::ASSET) {
+            throw new InvalidArgumentException('Only asset accounts can be marked as cash or bank accounts.');
+        }
+
+        if ($isCashAccount && $category !== null) {
+            throw new InvalidArgumentException('Cash and bank accounts cannot have a cash flow category.');
+        }
     }
 
     private function assertParent(Organization $organization, FinanceScope $scope, ?int $parentId, FinanceAccountType $type, ?FinanceAccount $account = null): void
