@@ -2,7 +2,6 @@
 
 namespace Modules\Finance\Services;
 
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Organization;
@@ -20,18 +19,24 @@ class FinanceReceiptService
         FinanceJournal $journal,
         array $data = [],
     ): FinanceReceipt {
-        $this->assertJournalBelongsToScope($organization, $scope, $journal);
-
-        if ($journal->status !== FinanceJournalStatus::POSTED) {
-            throw new \InvalidArgumentException(
-                'A receipt can only be issued for a posted journal.'
-            );
-        }
-
         return DB::transaction(function () use ($organization, $scope, $journal, $data): FinanceReceipt {
-            $existing = FinanceReceipt::query()
-                ->where('finance_journal_id', $journal->id)
+            // Lock the journal itself: unlike a not-yet-created receipt row,
+            // this row always exists and serializes concurrent issuance attempts.
+            $lockedJournal = FinanceJournal::query()
+                ->whereKey($journal->id)
                 ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->assertJournalBelongsToScope($organization, $scope, $lockedJournal);
+
+            if ($lockedJournal->status !== FinanceJournalStatus::POSTED) {
+                throw new \InvalidArgumentException(
+                    'A receipt can only be issued for a posted journal.'
+                );
+            }
+
+            $existing = FinanceReceipt::query()
+                ->where('finance_journal_id', $lockedJournal->id)
                 ->first();
 
             if ($existing) {
@@ -41,12 +46,12 @@ class FinanceReceiptService
             $receipt = FinanceReceipt::create([
                 'organization_id' => $organization->id,
                 'finance_scope_id' => $scope->id,
-                'finance_journal_id' => $journal->id,
+                'finance_journal_id' => $lockedJournal->id,
                 'receipt_number' => $data['receipt_number'] ?? $this->generateReceiptNumber(),
                 'issued_at' => $data['issued_at'] ?? now(),
                 'status' => FinanceReceiptStatus::ISSUED,
-                'source_type' => $journal->source_type,
-                'source_id' => $journal->source_id,
+                'source_type' => $lockedJournal->source_type,
+                'source_id' => $lockedJournal->source_id,
                 'metadata' => $data['metadata'] ?? [],
             ]);
 
@@ -66,14 +71,14 @@ class FinanceReceiptService
         FinanceScope $scope,
         FinanceJournal $journal,
     ): void {
-        if ($scope->organization_id !== $organization->id) {
+        if ((int) $scope->organization_id !== (int) $organization->id) {
             throw new \InvalidArgumentException(
                 'The finance scope does not belong to the organization.'
             );
         }
 
-        if ($journal->organization_id !== $organization->id
-            || $journal->finance_scope_id !== $scope->id) {
+        if ((int) $journal->organization_id !== (int) $organization->id
+            || (int) $journal->finance_scope_id !== (int) $scope->id) {
             throw new \InvalidArgumentException(
                 'The journal does not belong to the finance scope.'
             );
