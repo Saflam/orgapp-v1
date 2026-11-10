@@ -18,7 +18,7 @@
             <p class="muted">Enter at least two lines. Each line must be either a debit or a credit, and total debits must equal total credits.</p>
 
             <form wire:submit="postJournal">
-                <div class="grid">
+                <div class="grid journal-entry-fields">
                     <div class="field">
                         <label for="journal-date">Transaction date</label>
                         <input id="journal-date" type="date" wire:model="transactionDate" required>
@@ -55,7 +55,7 @@
                 </div>
 
                 <h3>Journal lines</h3>
-                <div class="table-wrap">
+                <div class="table-wrap journal-entry-lines">
                     <table>
                         <thead>
                             <tr>
@@ -119,7 +119,7 @@
 
     <section class="card">
         <h2>Journal register</h2>
-        <div class="grid">
+        <div class="grid journal-register-filters">
             <div class="field">
                 <label for="journal-search">Search</label>
                 <input id="journal-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Journal number or description">
@@ -241,3 +241,120 @@
         </section>
     @endif
 </div>
+
+
+<style>
+    .finance-journal-management .journal-entry-fields,
+    .finance-journal-management .journal-register-filters {
+        display: grid;
+        gap: 12px 16px;
+    }
+
+    .finance-journal-management .journal-entry-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .finance-journal-management .journal-register-filters {
+        grid-template-columns: minmax(260px, 2.2fr) repeat(4, minmax(130px, 1fr));
+        align-items: end;
+    }
+
+    .finance-journal-management .card {
+        padding: 16px 20px;
+    }
+
+    .finance-journal-management .card h2 {
+        margin-top: 0;
+        margin-bottom: 8px;
+    }
+
+    .finance-journal-management .card > .muted {
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+
+    .finance-journal-management .field {
+        margin-bottom: 0;
+    }
+
+    .finance-journal-management .field label {
+        margin-bottom: 5px;
+    }
+
+    .finance-journal-management input,
+    .finance-journal-management select,
+    .finance-journal-management textarea {
+        min-height: 38px;
+        padding-top: 7px;
+        padding-bottom: 7px;
+    }
+
+    .finance-journal-management .journal-entry-lines {
+        overflow-x: auto;
+    }
+
+    .finance-journal-management .journal-entry-lines table {
+        width: 100%;
+        min-width: 850px;
+        table-layout: fixed;
+    }
+
+    .finance-journal-management .journal-entry-lines th,
+    .finance-journal-management .journal-entry-lines td {
+        padding: 7px 9px;
+        vertical-align: middle;
+    }
+
+    .finance-journal-management .journal-entry-lines th:nth-child(1) { width: 25%; }
+    .finance-journal-management .journal-entry-lines th:nth-child(2) { width: 21%; }
+    .finance-journal-management .journal-entry-lines th:nth-child(3),
+    .finance-journal-management .journal-entry-lines th:nth-child(4) { width: 19%; }
+    .finance-journal-management .journal-entry-lines th:nth-child(5) { width: 16%; }
+
+    .finance-journal-management .journal-entry-lines input,
+    .finance-journal-management .journal-entry-lines select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .finance-journal-management .journal-entry-lines .btn,
+    .finance-journal-management .actions .btn {
+        min-height: 36px;
+        padding: 7px 12px;
+    }
+
+    .finance-journal-management h3 {
+        margin-top: 12px;
+        margin-bottom: 6px;
+    }
+
+    .finance-journal-management .actions {
+        margin-top: 10px;
+        gap: 8px;
+    }
+
+    @media (max-width: 1100px) {
+        .finance-journal-management .journal-register-filters {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .finance-journal-management .journal-register-filters .field:first-child {
+            grid-column: span 2;
+        }
+    }
+
+    @media (max-width: 700px) {
+        .finance-journal-management .card {
+            padding: 14px;
+        }
+
+        .finance-journal-management .journal-entry-fields,
+        .finance-journal-management .journal-register-filters {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .finance-journal-management .journal-register-filters .field:first-child {
+            grid-column: auto;
+        }
+    }
+</style>
