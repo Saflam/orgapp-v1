@@ -15,7 +15,8 @@ class FinanceAccount extends Model
 
     protected $fillable = [
         'organization_id', 'finance_scope_id', 'parent_id', 'code', 'name', 'account_type',
-        'normal_balance', 'is_system_managed', 'source_type', 'source_id', 'is_active', 'metadata',
+        'normal_balance', 'is_system_managed', 'source_type', 'source_id', 'is_active',
+        'is_cash_account', 'cash_flow_category', 'metadata',
     ];
 
     protected function casts(): array
@@ -25,6 +26,7 @@ class FinanceAccount extends Model
             'normal_balance' => FinanceNormalBalance::class,
             'is_system_managed' => 'boolean',
             'is_active' => 'boolean',
+            'is_cash_account' => 'boolean',
             'metadata' => 'array',
         ];
     }
