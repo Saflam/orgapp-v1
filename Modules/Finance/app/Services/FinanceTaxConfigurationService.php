@@ -13,42 +13,60 @@ class FinanceTaxConfigurationService
 {
     public function createRate(Organization $organization, array $data): FinanceTaxRate
     {
-        $validated = $this->validateRate($organization, $data);
-        if (FinanceTaxRate::query()->where('organization_id', $organization->id)->where('code', $validated['code'])->exists()) {
-            throw new InvalidArgumentException('A tax rate with this code already exists.');
-        }
+        return DB::transaction(function () use ($organization, $data): FinanceTaxRate {
+            // Lock mapped accounts while validating. Account deactivation takes the
+            // same account lock before checking active tax mappings.
+            $validated = $this->validateRate($organization, $data);
+            if (FinanceTaxRate::query()->where('organization_id', $organization->id)->where('code', $validated['code'])->exists()) {
+                throw new InvalidArgumentException('A tax rate with this code already exists.');
+            }
 
-        return FinanceTaxRate::create(['organization_id' => $organization->id] + $validated + ['is_active' => true, 'metadata' => []]);
+            return FinanceTaxRate::create(
+                ['organization_id' => $organization->id] + $validated + ['is_active' => true, 'metadata' => []]
+            );
+        });
     }
 
     public function updateRate(Organization $organization, FinanceTaxRate $rate, array $data): FinanceTaxRate
     {
-        $this->assertRateOrganization($organization, $rate);
-        $validated = $this->validateRate($organization, $data);
-        foreach ($rate->groups()->where('finance_tax_groups.is_active', true)->get() as $group) {
-            if (! $this->isApplicable($validated['applies_to'], $group->applies_to)) {
-                throw new InvalidArgumentException('This rate is used by an active tax group and cannot be changed to an incompatible applicability.');
+        return DB::transaction(function () use ($organization, $rate, $data): FinanceTaxRate {
+            $lockedRate = FinanceTaxRate::query()->whereKey($rate->id)->lockForUpdate()->firstOrFail();
+            $this->assertRateOrganization($organization, $lockedRate);
+
+            $validated = $this->validateRate($organization, $data);
+            foreach ($lockedRate->groups()->where('finance_tax_groups.is_active', true)->get() as $group) {
+                if (! $this->isApplicable($validated['applies_to'], $group->applies_to)) {
+                    throw new InvalidArgumentException('This rate is used by an active tax group and cannot be changed to an incompatible applicability.');
+                }
             }
-        }
-        $duplicate = FinanceTaxRate::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', $validated['code'])
-            ->whereKeyNot($rate->id)
-            ->exists();
-        if ($duplicate) {
-            throw new InvalidArgumentException('A tax rate with this code already exists.');
-        }
-        $rate->update($validated);
-        return $rate->refresh();
+
+            $duplicate = FinanceTaxRate::query()
+                ->where('organization_id', $organization->id)
+                ->where('code', $validated['code'])
+                ->whereKeyNot($lockedRate->id)
+                ->exists();
+            if ($duplicate) {
+                throw new InvalidArgumentException('A tax rate with this code already exists.');
+            }
+
+            $lockedRate->update($validated);
+
+            return $lockedRate->refresh();
+        });
     }
 
     public function deactivateRate(Organization $organization, FinanceTaxRate $rate): void
     {
-        $this->assertRateOrganization($organization, $rate);
-        if ($rate->groups()->where('finance_tax_groups.is_active', true)->exists()) {
-            throw new InvalidArgumentException('Remove this rate from active tax groups before deactivating it.');
-        }
-        $rate->update(['is_active' => false]);
+        DB::transaction(function () use ($organization, $rate): void {
+            $lockedRate = FinanceTaxRate::query()->whereKey($rate->id)->lockForUpdate()->firstOrFail();
+            $this->assertRateOrganization($organization, $lockedRate);
+
+            if ($lockedRate->groups()->where('finance_tax_groups.is_active', true)->exists()) {
+                throw new InvalidArgumentException('Remove this rate from active tax groups before deactivating it.');
+            }
+
+            $lockedRate->update(['is_active' => false]);
+        });
     }
 
     public function createGroup(Organization $organization, array $data): FinanceTaxGroup
@@ -57,27 +75,37 @@ class FinanceTaxConfigurationService
         $name = trim((string) ($data['name'] ?? ''));
         $appliesTo = (string) ($data['applies_to'] ?? '');
         $rateIds = array_values(array_unique(array_map('intval', $data['rate_ids'] ?? [])));
+
         if ($code === '' || $name === '' || ! in_array($appliesTo, ['sales', 'purchases', 'both'], true)) {
             throw new InvalidArgumentException('Enter a group code, name and valid applicability.');
-        }
-        if (FinanceTaxGroup::query()->where('organization_id', $organization->id)->where('code', $code)->exists()) {
-            throw new InvalidArgumentException('A tax group with this code already exists.');
         }
         if ($rateIds === []) {
             throw new InvalidArgumentException('Select at least one active tax rate for this group.');
         }
 
-        $rates = FinanceTaxRate::query()->where('organization_id', $organization->id)->whereIn('id', $rateIds)->where('is_active', true)->get();
-        if ($rates->count() !== count($rateIds)) {
-            throw new InvalidArgumentException('Every selected tax rate must be active and belong to this organization.');
-        }
-        foreach ($rates as $rate) {
-            if (! $this->isApplicable($rate->applies_to, $appliesTo)) {
-                throw new InvalidArgumentException("Tax rate {$rate->code} is not applicable to this group.");
-            }
-        }
-
         return DB::transaction(function () use ($organization, $code, $name, $appliesTo, $rateIds): FinanceTaxGroup {
+            if (FinanceTaxGroup::query()->where('organization_id', $organization->id)->where('code', $code)->exists()) {
+                throw new InvalidArgumentException('A tax group with this code already exists.');
+            }
+
+            // Lock and re-read every selected rate inside the transaction. This
+            // serializes group creation against rate deactivation and updates.
+            $rates = FinanceTaxRate::query()
+                ->where('organization_id', $organization->id)
+                ->whereIn('id', $rateIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($rates->count() !== count($rateIds) || $rates->contains(fn (FinanceTaxRate $rate): bool => ! $rate->is_active)) {
+                throw new InvalidArgumentException('Every selected tax rate must be active and belong to this organization.');
+            }
+            foreach ($rates as $rate) {
+                if (! $this->isApplicable($rate->applies_to, $appliesTo)) {
+                    throw new InvalidArgumentException("Tax rate {$rate->code} is not applicable to this group.");
+                }
+            }
+
             $group = FinanceTaxGroup::create([
                 'organization_id' => $organization->id,
                 'code' => $code,
@@ -86,16 +114,20 @@ class FinanceTaxConfigurationService
                 'is_active' => true,
             ]);
             $group->rates()->sync(collect($rateIds)->values()->mapWithKeys(fn ($id, $position) => [$id => ['position' => $position]])->all());
+
             return $group->load('rates');
         });
     }
 
     public function deactivateGroup(Organization $organization, FinanceTaxGroup $group): void
     {
-        if ((int) $group->organization_id !== (int) $organization->id) {
-            throw new InvalidArgumentException('The tax group does not belong to this organization.');
-        }
-        $group->update(['is_active' => false]);
+        DB::transaction(function () use ($organization, $group): void {
+            $lockedGroup = FinanceTaxGroup::query()->whereKey($group->id)->lockForUpdate()->firstOrFail();
+            if ((int) $lockedGroup->organization_id !== (int) $organization->id) {
+                throw new InvalidArgumentException('The tax group does not belong to this organization.');
+            }
+            $lockedGroup->update(['is_active' => false]);
+        });
     }
 
     private function validateRate(Organization $organization, array $data): array
@@ -136,6 +168,7 @@ class FinanceTaxConfigurationService
         if (! $accountId) {
             throw new InvalidArgumentException("Select an organization-wide {$label} tax account.");
         }
+
         $account = FinanceAccount::query()
             ->where('organization_id', $organization->id)
             ->where('is_active', true)
@@ -143,7 +176,10 @@ class FinanceTaxConfigurationService
             ->whereHas('scope', fn ($query) => $query
                 ->where('organization_id', $organization->id)
                 ->where('scope_type', 'organization'))
-            ->find($accountId);
+            ->whereKey($accountId)
+            ->lockForUpdate()
+            ->first();
+
         if (! $account) {
             throw new InvalidArgumentException("The {$label} tax account must be an active {$type} account in this organization's chart.");
         }
@@ -161,6 +197,7 @@ class FinanceTaxConfigurationService
         if ($groupApplicability === 'both') {
             return $rateApplicability === 'both';
         }
+
         return $rateApplicability === 'both' || $rateApplicability === $groupApplicability;
     }
 }

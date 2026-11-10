@@ -11,25 +11,24 @@ use Modules\Finance\Models\FinanceScope;
 
 class FinancePeriodService
 {
-    public function create(
-        Organization $organization,
-        FinanceScope $scope,
-        array $data,
-    ): FinancePeriod {
-        $this->assertScopeBelongsToOrganization($organization, $scope);
-        $this->assertValidDateRange($data['starts_on'], $data['ends_on']);
-        $this->assertNoOverlap($organization, $scope, $data['starts_on'], $data['ends_on']);
+    public function create(Organization $organization, FinanceScope $scope, array $data): FinancePeriod
+    {
+        return DB::transaction(function () use ($organization, $scope, $data): FinancePeriod {
+            $lockedScope = $this->lockOrganizationScope($organization, $scope);
+            $this->assertValidDateRange($data['starts_on'], $data['ends_on']);
+            $this->assertNoOverlap($organization, $lockedScope, $data['starts_on'], $data['ends_on']);
 
-        return FinancePeriod::create([
-            'organization_id' => $organization->id,
-            'finance_scope_id' => $scope->id,
-            'name' => $data['name'],
-            'code' => strtoupper(trim($data['code'])),
-            'starts_on' => $data['starts_on'],
-            'ends_on' => $data['ends_on'],
-            'status' => FinancePeriodStatus::OPEN,
-            'metadata' => $data['metadata'] ?? [],
-        ]);
+            return FinancePeriod::create([
+                'organization_id' => $organization->id,
+                'finance_scope_id' => $lockedScope->id,
+                'name' => $data['name'],
+                'code' => strtoupper(trim($data['code'])),
+                'starts_on' => $data['starts_on'],
+                'ends_on' => $data['ends_on'],
+                'status' => FinancePeriodStatus::OPEN,
+                'metadata' => $data['metadata'] ?? [],
+            ]);
+        });
     }
 
     public function generateDraft(
@@ -38,8 +37,6 @@ class FinancePeriodService
         int $startYear,
         array $pattern,
     ): FinancePeriod {
-        $this->assertScopeBelongsToOrganization($organization, $scope);
-
         $startMonth = (int) ($pattern['start_month'] ?? 4);
         $startDay = (int) ($pattern['start_day'] ?? 1);
         $endMonth = (int) ($pattern['end_month'] ?? 3);
@@ -60,7 +57,6 @@ class FinancePeriodService
         $startsOn = CarbonImmutable::createFromDate($startYear, $startMonth, $startDay)->toDateString();
         $endsOn = CarbonImmutable::createFromDate($endYear, $endMonth, $endDay)->toDateString();
         $this->assertValidDateRange($startsOn, $endsOn);
-        $this->assertNoOverlap($organization, $scope, $startsOn, $endsOn);
 
         $code = $endYear === $startYear
             ? 'FY' . $startYear
@@ -69,47 +65,45 @@ class FinancePeriodService
             ? 'Financial Year ' . $startYear
             : sprintf('Financial Year %d-%02d', $startYear, $endYear % 100);
 
-        return FinancePeriod::create([
-            'organization_id' => $organization->id,
-            'finance_scope_id' => $scope->id,
-            'name' => $name,
-            'code' => $code,
-            'starts_on' => $startsOn,
-            'ends_on' => $endsOn,
-            'status' => FinancePeriodStatus::DRAFT,
-            'metadata' => [
-                'generated_from_financial_year_pattern' => true,
-                'financial_year_start_year' => $startYear,
-                'financial_year_pattern' => [
-                    'start_month' => $startMonth,
-                    'start_day' => $startDay,
-                    'end_month' => $endMonth,
-                    'end_day' => $endDay,
+        return DB::transaction(function () use ($organization, $scope, $startYear, $pattern, $startsOn, $endsOn, $code, $name): FinancePeriod {
+            $lockedScope = $this->lockOrganizationScope($organization, $scope);
+            $this->assertNoOverlap($organization, $lockedScope, $startsOn, $endsOn);
+
+            return FinancePeriod::create([
+                'organization_id' => $organization->id,
+                'finance_scope_id' => $lockedScope->id,
+                'name' => $name,
+                'code' => $code,
+                'starts_on' => $startsOn,
+                'ends_on' => $endsOn,
+                'status' => FinancePeriodStatus::DRAFT,
+                'metadata' => [
+                    'generated_from_financial_year_pattern' => true,
+                    'financial_year_start_year' => $startYear,
+                    'financial_year_pattern' => [
+                        'start_month' => (int) ($pattern['start_month'] ?? 4),
+                        'start_day' => (int) ($pattern['start_day'] ?? 1),
+                        'end_month' => (int) ($pattern['end_month'] ?? 3),
+                        'end_day' => (int) ($pattern['end_day'] ?? 31),
+                    ],
                 ],
-            ],
-        ]);
+            ]);
+        });
     }
 
     public function open(FinancePeriod $period): FinancePeriod
     {
         return DB::transaction(function () use ($period): FinancePeriod {
-            $lockedPeriod = FinancePeriod::query()
-                ->whereKey($period->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            $lockedPeriod = FinancePeriod::query()->whereKey($period->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedPeriod->status === FinancePeriodStatus::CLOSED) {
                 throw new \InvalidArgumentException('A closed financial period cannot be reopened.');
             }
-
             if ($lockedPeriod->status === FinancePeriodStatus::OPEN) {
                 return $lockedPeriod;
             }
 
-            $lockedPeriod->update([
-                'status' => FinancePeriodStatus::OPEN,
-                'closed_at' => null,
-            ]);
+            $lockedPeriod->update(['status' => FinancePeriodStatus::OPEN, 'closed_at' => null]);
 
             return $lockedPeriod->refresh();
         });
@@ -122,28 +116,24 @@ class FinancePeriodService
         array $data,
     ): FinancePeriod {
         return DB::transaction(function () use ($organization, $scope, $period, $data): FinancePeriod {
-            $this->assertScopeBelongsToOrganization($organization, $scope);
+            // All period-range mutations lock the same scope row first. This makes
+            // the overlap check and write a serialized operation per organization ledger.
+            $lockedScope = $this->lockOrganizationScope($organization, $scope);
+            $lockedPeriod = FinancePeriod::query()->whereKey($period->id)->lockForUpdate()->firstOrFail();
 
-            $lockedPeriod = FinancePeriod::query()
-                ->whereKey($period->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if ($lockedPeriod->organization_id !== $organization->id
-                || $lockedPeriod->finance_scope_id !== $scope->id) {
+            if ((int) $lockedPeriod->organization_id !== (int) $organization->id
+                || (int) $lockedPeriod->finance_scope_id !== (int) $lockedScope->id) {
                 throw new \InvalidArgumentException('The financial period does not belong to this organization scope.');
             }
-
             if (! $lockedPeriod->isOpen()) {
                 throw new \InvalidArgumentException('Only open financial periods can be edited.');
             }
-
             if ($lockedPeriod->journals()->exists()) {
                 throw new \InvalidArgumentException('A financial period with posted journals cannot be edited.');
             }
 
             $this->assertValidDateRange($data['starts_on'], $data['ends_on']);
-            $this->assertNoOverlap($organization, $scope, $data['starts_on'], $data['ends_on'], $lockedPeriod->id);
+            $this->assertNoOverlap($organization, $lockedScope, $data['starts_on'], $data['ends_on'], $lockedPeriod->id);
 
             $lockedPeriod->update([
                 'name' => $data['name'],
@@ -159,24 +149,17 @@ class FinancePeriodService
     public function close(FinancePeriod $period): FinancePeriod
     {
         return DB::transaction(function () use ($period): FinancePeriod {
-            // Posting takes this same lock before checking period status.
-            $lockedPeriod = FinancePeriod::query()
-                ->whereKey($period->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            // Posting takes this same period-row lock before checking period status.
+            $lockedPeriod = FinancePeriod::query()->whereKey($period->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedPeriod->isClosed()) {
                 return $lockedPeriod;
             }
-
             if ($lockedPeriod->status === FinancePeriodStatus::DRAFT) {
                 throw new \InvalidArgumentException('A draft financial period must be opened before it can be closed.');
             }
 
-            $lockedPeriod->update([
-                'status' => FinancePeriodStatus::CLOSED,
-                'closed_at' => now(),
-            ]);
+            $lockedPeriod->update(['status' => FinancePeriodStatus::CLOSED, 'closed_at' => now()]);
 
             return $lockedPeriod->refresh();
         });
@@ -193,10 +176,8 @@ class FinancePeriodService
         }
     }
 
-    public function forDate(
-        FinanceScope $scope,
-        \DateTimeInterface|string $date,
-    ): ?FinancePeriod {
+    public function forDate(FinanceScope $scope, \DateTimeInterface|string $date): ?FinancePeriod
+    {
         return FinancePeriod::query()
             ->where('organization_id', $scope->organization_id)
             ->where('finance_scope_id', $scope->id)
@@ -204,6 +185,20 @@ class FinancePeriodService
             ->whereDate('starts_on', '<=', $date)
             ->whereDate('ends_on', '>=', $date)
             ->first();
+    }
+
+    private function lockOrganizationScope(Organization $organization, FinanceScope $scope): FinanceScope
+    {
+        $lockedScope = FinanceScope::query()->whereKey($scope->id)->lockForUpdate()->firstOrFail();
+
+        if ((int) $lockedScope->organization_id !== (int) $organization->id) {
+            throw new \InvalidArgumentException('The finance scope does not belong to the organization.');
+        }
+        if (! $lockedScope->isOrganizationScope()) {
+            throw new \InvalidArgumentException('Financial periods must belong to the organization-wide ledger.');
+        }
+
+        return $lockedScope;
     }
 
     private function assertValidDateRange(string $startsOn, string $endsOn): void
@@ -229,22 +224,8 @@ class FinancePeriodService
         if ($ignoreId !== null) {
             $query->where('id', '!=', $ignoreId);
         }
-
         if ($query->exists()) {
             throw new \InvalidArgumentException('The financial period overlaps an existing period.');
-        }
-    }
-
-    private function assertScopeBelongsToOrganization(
-        Organization $organization,
-        FinanceScope $scope,
-    ): void {
-        if ($scope->organization_id !== $organization->id) {
-            throw new \InvalidArgumentException('The finance scope does not belong to the organization.');
-        }
-
-        if (! $scope->isOrganizationScope()) {
-            throw new \InvalidArgumentException('Financial periods must belong to the organization-wide ledger.');
         }
     }
 }

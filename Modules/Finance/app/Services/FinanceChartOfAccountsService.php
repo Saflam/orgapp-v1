@@ -17,62 +17,92 @@ class FinanceChartOfAccountsService
 {
     public function createManual(Organization $organization, FinanceScope $scope, array $data): FinanceAccount
     {
-        $this->assertOrganizationScope($organization, $scope);
-        $type = $this->accountType($data['account_type'] ?? null);
-        $this->assertParent($organization, $scope, $data['parent_id'] ?? null, $type);
+        return DB::transaction(function () use ($organization, $scope, $data): FinanceAccount {
+            $this->assertOrganizationScope($organization, $scope);
+            $type = $this->accountType($data['account_type'] ?? null);
+            $parentId = isset($data['parent_id']) ? (int) $data['parent_id'] : null;
+            $this->assertParent($organization, $scope, $parentId, $type);
 
-        $code = strtoupper(trim((string) ($data['code'] ?? '')));
-        if ($code === '') {
-            throw new InvalidArgumentException('An account code is required.');
-        }
-        if (FinanceAccount::query()->where('organization_id', $organization->id)->where('finance_scope_id', $scope->id)->where('code', $code)->exists()) {
-            throw new InvalidArgumentException('An account with this code already exists.');
-        }
+            $code = strtoupper(trim((string) ($data['code'] ?? '')));
+            if ($code === '') {
+                throw new InvalidArgumentException('An account code is required.');
+            }
+            if (FinanceAccount::query()->where('organization_id', $organization->id)->where('finance_scope_id', $scope->id)->where('code', $code)->exists()) {
+                throw new InvalidArgumentException('An account with this code already exists.');
+            }
 
-        return FinanceAccount::create([
-            'organization_id' => $organization->id,
-            'finance_scope_id' => $scope->id,
-            'parent_id' => $data['parent_id'] ?? null,
-            'code' => $code,
-            'name' => trim((string) $data['name']),
-            'account_type' => $type,
-            'normal_balance' => $this->normalBalance($type),
-            'is_system_managed' => false,
-            'source_type' => null,
-            'source_id' => null,
-            'is_active' => true,
-            'metadata' => [],
-        ]);
+            return FinanceAccount::create([
+                'organization_id' => $organization->id,
+                'finance_scope_id' => $scope->id,
+                'parent_id' => $parentId,
+                'code' => $code,
+                'name' => trim((string) $data['name']),
+                'account_type' => $type,
+                'normal_balance' => $this->normalBalance($type),
+                'is_system_managed' => false,
+                'source_type' => null,
+                'source_id' => null,
+                'is_active' => true,
+                'metadata' => [],
+            ]);
+        });
     }
 
     public function updateManual(Organization $organization, FinanceScope $scope, FinanceAccount $account, array $data): FinanceAccount
     {
-        $this->assertOrganizationScope($organization, $scope);
-        $this->assertAccountBelongsToChart($organization, $scope, $account);
-        if ($account->is_system_managed) {
-            throw new InvalidArgumentException('System-managed accounts cannot be edited here.');
-        }
+        return DB::transaction(function () use ($organization, $scope, $account, $data): FinanceAccount {
+            $this->assertOrganizationScope($organization, $scope);
 
-        $parentId = array_key_exists('parent_id', $data) ? $data['parent_id'] : $account->parent_id;
-        $this->assertParent($organization, $scope, $parentId, $account->account_type, $account);
-        $code = strtoupper(trim((string) ($data['code'] ?? $account->code)));
-        $duplicate = FinanceAccount::query()
-            ->where('organization_id', $organization->id)
-            ->where('finance_scope_id', $scope->id)
-            ->where('code', $code)
-            ->whereKeyNot($account->id)
-            ->exists();
-        if ($duplicate) {
-            throw new InvalidArgumentException('An account with this code already exists.');
-        }
+            $parentWasProvided = array_key_exists('parent_id', $data);
+            $parentId = $parentWasProvided && $data['parent_id'] !== null
+                ? (int) $data['parent_id']
+                : null;
 
-        $account->update([
-            'parent_id' => $parentId,
-            'code' => $code,
-            'name' => trim((string) ($data['name'] ?? $account->name)),
-        ]);
+            // Lock the edited account and, when changing the relationship, its
+            // proposed parent in stable ID order. Read the existing parent only
+            // after locking the account so a stale caller cannot overwrite it.
+            $lockIds = array_values(array_unique(array_filter([(int) $account->id, $parentId])));
+            sort($lockIds, SORT_NUMERIC);
+            $lockedAccounts = FinanceAccount::query()
+                ->whereIn('id', $lockIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
 
-        return $account->refresh();
+            $lockedAccount = $lockedAccounts->get($account->id);
+            if (! $lockedAccount) {
+                throw new InvalidArgumentException('The account does not belong to this organization chart.');
+            }
+            $this->assertAccountBelongsToChart($organization, $scope, $lockedAccount);
+            if ($lockedAccount->is_system_managed) {
+                throw new InvalidArgumentException('System-managed accounts cannot be edited here.');
+            }
+
+            if (! $parentWasProvided) {
+                $parentId = $lockedAccount->parent_id;
+            } else {
+                $this->assertParent($organization, $scope, $parentId, $lockedAccount->account_type, $lockedAccount);
+            }
+            $code = strtoupper(trim((string) ($data['code'] ?? $lockedAccount->code)));
+            $duplicate = FinanceAccount::query()
+                ->where('organization_id', $organization->id)
+                ->where('finance_scope_id', $scope->id)
+                ->where('code', $code)
+                ->whereKeyNot($lockedAccount->id)
+                ->exists();
+            if ($duplicate) {
+                throw new InvalidArgumentException('An account with this code already exists.');
+            }
+
+            $lockedAccount->update([
+                'parent_id' => $parentId,
+                'code' => $code,
+                'name' => trim((string) ($data['name'] ?? $lockedAccount->name)),
+            ]);
+
+            return $lockedAccount->refresh();
+        });
     }
 
     public function deactivate(Organization $organization, FinanceScope $scope, FinanceAccount $account): void
@@ -80,15 +110,14 @@ class FinanceChartOfAccountsService
         DB::transaction(function () use ($organization, $scope, $account): void {
             $this->assertOrganizationScope($organization, $scope);
 
-            // Match journal posting's account-row lock so an account cannot be
-            // deactivated while a journal is being posted against it.
+            // Child creation/moves lock the parent row; journal posting and
+            // deactivation lock the account row. These shared locks serialize the checks.
             $lockedAccount = FinanceAccount::query()
                 ->whereKey($account->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             $this->assertAccountBelongsToChart($organization, $scope, $lockedAccount);
-
             if ($lockedAccount->is_system_managed) {
                 throw new InvalidArgumentException('System-managed accounts cannot be deactivated here.');
             }
@@ -125,6 +154,7 @@ class FinanceChartOfAccountsService
             ->where('organization_id', $organization->id)
             ->where('finance_scope_id', $scope->id)
             ->whereKey($parentId)
+            ->lockForUpdate()
             ->first();
         if (! $parent) {
             throw new InvalidArgumentException('The parent account must belong to this organization chart.');
@@ -135,7 +165,6 @@ class FinanceChartOfAccountsService
         if ($parent->account_type !== $type) {
             throw new InvalidArgumentException('Parent and child accounts must have the same account type.');
         }
-
         if ($account && $this->isDescendantOf($parent, $account->id)) {
             throw new InvalidArgumentException('An account cannot be moved beneath one of its descendants.');
         }
@@ -157,6 +186,7 @@ class FinanceChartOfAccountsService
                 return false;
             }
         }
+
         return false;
     }
 
@@ -165,6 +195,7 @@ class FinanceChartOfAccountsService
         if ($value instanceof FinanceAccountType) {
             return $value;
         }
+
         return FinanceAccountType::tryFrom((string) $value)
             ?? throw new InvalidArgumentException('Choose a valid account type.');
     }
