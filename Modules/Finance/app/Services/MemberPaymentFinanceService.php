@@ -102,15 +102,19 @@ class MemberPaymentFinanceService
                 ],
             );
         } catch (QueryException $exception) {
-            if (! $this->isSourceUniquenessConflict($exception)) {
-                throw $exception;
-            }
-
+            // A concurrent handler may have inserted the same source journal
+            // after the initial lookup. Recover only if that row now exists;
+            // otherwise preserve the original integrity error.
             $journal = FinanceJournal::query()
                 ->where('organization_id', $organization->id)
+                ->where('finance_scope_id', $scope->id)
                 ->where('source_type', 'member_payment')
                 ->where('source_id', $payment->id)
-                ->firstOrFail();
+                ->first();
+
+            if (! $journal) {
+                throw $exception;
+            }
         }
 
         return $this->receipts->issue(
@@ -246,10 +250,5 @@ class MemberPaymentFinanceService
         }
 
         return $result;
-    }
-
-    private function isSourceUniquenessConflict(QueryException $exception): bool
-    {
-        return $exception->getCode() === '23000';
     }
 }
