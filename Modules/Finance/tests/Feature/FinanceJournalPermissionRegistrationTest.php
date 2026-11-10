@@ -28,6 +28,12 @@ class FinanceJournalPermissionRegistrationTest extends TestCase
             'name' => 'Post Journal Entries',
             'code' => 'finance.journal.post',
         ]);
+
+        $this->assertDatabaseHas('permissions', [
+            'module' => 'finance',
+            'name' => 'Reverse Journal Entries',
+            'code' => 'finance.journal.reverse',
+        ]);
     }
 
     public function test_finance_administrator_role_includes_journal_permissions(): void
@@ -38,5 +44,6 @@ class FinanceJournalPermissionRegistrationTest extends TestCase
         $this->assertNotNull($financeAdministrator);
         $this->assertContains('finance.journal.view', $financeAdministrator['permissions']);
         $this->assertContains('finance.journal.post', $financeAdministrator['permissions']);
+        $this->assertContains('finance.journal.reverse', $financeAdministrator['permissions']);
     }
 }

@@ -5,6 +5,7 @@ namespace Modules\Finance\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
 use Modules\Finance\Enums\FinanceJournalStatus;
@@ -22,6 +23,8 @@ class FinanceJournal extends Model
         'journal_number',
         'transaction_date',
         'description',
+        'reversal_reason',
+        'reversal_of_journal_id',
         'source_type',
         'source_id',
         'status',
@@ -62,9 +65,24 @@ class FinanceJournal extends Model
         return $this->hasMany(FinanceJournalLine::class, 'journal_id');
     }
 
+    public function originalJournal(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reversal_of_journal_id');
+    }
+
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(self::class, 'reversal_of_journal_id');
+    }
+
     public function isPosted(): bool
     {
         return $this->status === FinanceJournalStatus::POSTED;
+    }
+
+    public function isReversal(): bool
+    {
+        return $this->reversal_of_journal_id !== null;
     }
 
     protected static function booted(): void

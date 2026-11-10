@@ -33,6 +33,11 @@ class FinanceJournalManagement extends Component
     public string $fromDate = '';
     public string $toDate = '';
 
+    public ?int $reversalJournalId = null;
+    public string $reversalDate = '';
+    public ?int $reversalPeriodId = null;
+    public string $reversalReason = '';
+
     public string $successMessage = '';
 
     public function mount(
@@ -134,6 +139,90 @@ class FinanceJournalManagement extends Component
         $this->resetEntryForm();
     }
 
+    public function prepareReversal(
+        int $journalId,
+        AuthorizationService $authorization,
+        FinanceScopeService $scopes,
+    ): void {
+        $this->ensureCanReverse($authorization);
+
+        $scope = $scopes->organizationScope($this->organization);
+        $journal = FinanceJournal::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->findOrFail($journalId);
+
+        abort_unless(
+            $journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal()->exists(),
+            422,
+            'This journal cannot be reversed.',
+        );
+
+        $this->reversalJournalId = $journal->id;
+        $this->reversalDate = now()->toDateString();
+        $this->reversalPeriodId = null;
+        $this->reversalReason = '';
+        $this->resetValidation();
+    }
+
+    public function cancelReversal(): void
+    {
+        $this->reversalJournalId = null;
+        $this->reversalDate = '';
+        $this->reversalPeriodId = null;
+        $this->reversalReason = '';
+        $this->resetValidation();
+    }
+
+    public function reverseJournal(
+        FinanceJournalService $journals,
+        FinanceScopeService $scopes,
+        AuthorizationService $authorization,
+    ): void {
+        $this->ensureCanReverse($authorization);
+
+        $validated = $this->validate([
+            'reversalJournalId' => ['required', 'integer'],
+            'reversalDate' => ['required', 'date_format:Y-m-d'],
+            'reversalPeriodId' => ['required', 'integer'],
+            'reversalReason' => ['required', 'string', 'min:3', 'max:1000'],
+        ]);
+
+        $scope = $scopes->organizationScope($this->organization);
+        $original = FinanceJournal::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->findOrFail($validated['reversalJournalId']);
+
+        $period = FinancePeriod::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('finance_scope_id', $scope->id)
+            ->findOrFail($validated['reversalPeriodId']);
+
+        try {
+            $reversal = $journals->reverse(
+                $this->organization,
+                $scope,
+                $original,
+                $period,
+                $validated['reversalDate'],
+                $validated['reversalReason'],
+            );
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'reversalReason' => $exception->getMessage(),
+            ]);
+        }
+
+        $this->successMessage = sprintf(
+            'Journal %s reversed successfully by %s.',
+            $original->journal_number,
+            $reversal->journal_number,
+        );
+
+        $this->cancelReversal();
+    }
+
     public function resetEntryForm(): void
     {
         $this->periodId = null;
@@ -181,7 +270,7 @@ class FinanceJournalManagement extends Component
         $query = FinanceJournal::query()
             ->where('organization_id', $this->organization->id)
             ->where('finance_scope_id', $scope->id)
-            ->with(['period', 'unit', 'lines.account'])
+            ->with(['period', 'unit', 'lines.account', 'reversal'])
             ->withCount('lines')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id');
@@ -222,6 +311,7 @@ class FinanceJournalManagement extends Component
             'draftDebitTotal' => collect($this->lines)->sum(fn (array $line): float => (float) ($line['debit'] ?? 0)),
             'draftCreditTotal' => collect($this->lines)->sum(fn (array $line): float => (float) ($line['credit'] ?? 0)),
             'canPost' => $this->can($authorization, 'finance.journal.post'),
+            'canReverse' => $this->can($authorization, 'finance.journal.reverse'),
         ])->layout('core::layouts.organization-admin', [
             'pageTitle' => 'Journal Entries',
             'layoutOrganization' => $this->organization,
@@ -242,7 +332,8 @@ class FinanceJournalManagement extends Component
     {
         abort_unless(
             $this->can($authorization, 'finance.journal.view')
-                || $this->can($authorization, 'finance.journal.post'),
+                || $this->can($authorization, 'finance.journal.post')
+                || $this->can($authorization, 'finance.journal.reverse'),
             403,
         );
     }
@@ -250,6 +341,11 @@ class FinanceJournalManagement extends Component
     private function ensureCanPost(AuthorizationService $authorization): void
     {
         abort_unless($this->can($authorization, 'finance.journal.post'), 403);
+    }
+
+    private function ensureCanReverse(AuthorizationService $authorization): void
+    {
+        abort_unless($this->can($authorization, 'finance.journal.reverse'), 403);
     }
 
     private function can(AuthorizationService $authorization, string $permission): bool

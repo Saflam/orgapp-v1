@@ -92,6 +92,119 @@ class FinanceJournalService
         });
     }
 
+    /**
+     * Create a posted, balanced reversal in an open period.
+     *
+     * The original journal row is locked first so concurrent attempts serialize.
+     * The unique reversal_of_journal_id index is the final database-level guard
+     * against more than one reversal for the same original journal.
+     */
+    public function reverse(
+        Organization $organization,
+        FinanceScope $scope,
+        FinanceJournal $journal,
+        FinancePeriod $reversalPeriod,
+        string $transactionDate,
+        string $reason,
+    ): FinanceJournal {
+        return DB::transaction(function () use (
+            $organization,
+            $scope,
+            $journal,
+            $reversalPeriod,
+            $transactionDate,
+            $reason,
+        ): FinanceJournal {
+            $this->assertScopeBelongsToOrganization($organization, $scope);
+
+            if (! $scope->isOrganizationScope()) {
+                throw new \InvalidArgumentException('Finance journals must use the organization-wide ledger.');
+            }
+
+            $original = FinanceJournal::query()
+                ->whereKey($journal->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $original->organization_id !== (int) $organization->id
+                || (int) $original->finance_scope_id !== (int) $scope->id) {
+                throw new \InvalidArgumentException('The journal does not belong to the finance scope.');
+            }
+
+            if ($original->status !== FinanceJournalStatus::POSTED) {
+                throw new \InvalidArgumentException('Only posted journals can be reversed.');
+            }
+
+            if ($original->reversal_of_journal_id !== null) {
+                throw new \InvalidArgumentException('A reversal journal cannot itself be reversed.');
+            }
+
+            if (FinanceJournal::query()->where('reversal_of_journal_id', $original->id)->exists()) {
+                throw new \InvalidArgumentException('This journal has already been reversed.');
+            }
+
+            $lockedPeriod = FinancePeriod::query()
+                ->whereKey($reversalPeriod->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->assertPeriodBelongsToScope($lockedPeriod, $scope, $organization);
+            app(FinancePeriodService::class)->assertOpen($lockedPeriod);
+
+            if ($transactionDate < $lockedPeriod->starts_on->toDateString()
+                || $transactionDate > $lockedPeriod->ends_on->toDateString()) {
+                throw new \InvalidArgumentException(
+                    'The reversal transaction date is outside the financial period.'
+                );
+            }
+
+            $reason = trim($reason);
+            if ($reason === '') {
+                throw new \InvalidArgumentException('A reversal reason is required.');
+            }
+
+            $originalLines = $original->lines()
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($originalLines->count() < 2) {
+                throw new \InvalidArgumentException('The original journal does not contain valid journal lines.');
+            }
+
+            $reversal = FinanceJournal::create([
+                'organization_id' => $organization->id,
+                'finance_scope_id' => $scope->id,
+                'finance_period_id' => $lockedPeriod->id,
+                'unit_id' => $original->unit_id,
+                'journal_number' => $this->generateJournalNumber(),
+                'transaction_date' => $transactionDate,
+                'description' => 'Reversal of ' . $original->journal_number,
+                'reversal_reason' => $reason,
+                'reversal_of_journal_id' => $original->id,
+                'source_type' => 'journal_reversal',
+                'source_id' => $original->id,
+                'status' => FinanceJournalStatus::POSTED,
+                'metadata' => [
+                    'reversal_of_journal_id' => $original->id,
+                    'original_journal_number' => $original->journal_number,
+                ],
+            ]);
+
+            foreach ($originalLines as $line) {
+                $reversal->lines()->create([
+                    'finance_account_id' => $line->finance_account_id,
+                    'description' => $line->description,
+                    'debit' => $line->credit,
+                    'credit' => $line->debit,
+                    'metadata' => $line->metadata ?? [],
+                ]);
+            }
+
+            return $reversal->load('lines');
+        });
+    }
+
     private function prepareLine(
         Organization $organization,
         FinanceScope $scope,

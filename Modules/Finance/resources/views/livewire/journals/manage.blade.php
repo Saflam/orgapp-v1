@@ -165,12 +165,20 @@
                         <th>Total debit</th>
                         <th>Total credit</th>
                         <th>Status</th>
+                        @if ($canReverse)<th>Action</th>@endif
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($journalEntries as $journal)
                         <tr wire:key="finance-journal-{{ $journal->id }}">
-                            <td>{{ $journal->journal_number }}</td>
+                            <td>
+                                {{ $journal->journal_number }}
+                                @if ($journal->isReversal())
+                                    <div class="muted">Reversal of {{ $journal->originalJournal?->journal_number ?? 'journal' }}</div>
+                                @elseif ($journal->reversal)
+                                    <div class="muted">Reversed by {{ $journal->reversal->journal_number }}</div>
+                                @endif
+                            </td>
                             <td>{{ $journal->transaction_date->format('d M Y') }}</td>
                             <td>{{ $journal->period?->code ?? '—' }}</td>
                             <td>{{ $journal->unit?->name ?? 'Organization' }}</td>
@@ -179,13 +187,57 @@
                             <td>{{ number_format((float) $journal->lines->sum('debit'), 4) }}</td>
                             <td>{{ number_format((float) $journal->lines->sum('credit'), 4) }}</td>
                             <td><span class="pill ok">{{ ucfirst($journal->status->value) }}</span></td>
+                            @if ($canReverse)
+                                <td>
+                                    @if ($journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal)
+                                        <button class="btn secondary" type="button" wire:click="prepareReversal({{ $journal->id }})">Reverse</button>
+                                    @else
+                                        <span class="muted">—</span>
+                                    @endif
+                                </td>
+                            @endif
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="empty">No journal entries match the selected filters.</td></tr>
+                        <tr><td colspan="{{ $canReverse ? 10 : 9 }}" class="empty">No journal entries match the selected filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
         <p class="muted">Showing up to 100 matching journal entries, newest first.</p>
     </section>
+
+    @if ($reversalJournalId)
+        <section class="card" aria-labelledby="reverse-journal-heading">
+            <h2 id="reverse-journal-heading">Reverse journal</h2>
+            <p class="muted">A new posted journal will be created with the original debit and credit amounts swapped. The original journal will remain unchanged.</p>
+            <form wire:submit="reverseJournal">
+                <div class="grid">
+                    <div class="field">
+                        <label for="reversal-date">Reversal date</label>
+                        <input id="reversal-date" type="date" wire:model="reversalDate" required>
+                        @error('reversalDate') <span class="error">{{ $message }}</span> @enderror
+                    </div>
+                    <div class="field">
+                        <label for="reversal-period">Open financial period</label>
+                        <select id="reversal-period" wire:model="reversalPeriodId" required>
+                            <option value="">Select an open period</option>
+                            @foreach ($openPeriods as $period)
+                                <option value="{{ $period->id }}">{{ $period->code }} — {{ $period->starts_on->format('d M Y') }} to {{ $period->ends_on->format('d M Y') }}</option>
+                            @endforeach
+                        </select>
+                        @error('reversalPeriodId') <span class="error">{{ $message }}</span> @enderror
+                    </div>
+                    <div class="field">
+                        <label for="reversal-reason">Reason for reversal</label>
+                        <textarea id="reversal-reason" wire:model="reversalReason" rows="3" maxlength="1000" required></textarea>
+                        @error('reversalReason') <span class="error">{{ $message }}</span> @enderror
+                    </div>
+                </div>
+                <div class="actions">
+                    <button class="btn" type="submit" wire:loading.attr="disabled" wire:target="reverseJournal">Confirm reversal</button>
+                    <button class="btn secondary" type="button" wire:click="cancelReversal">Cancel</button>
+                </div>
+            </form>
+        </section>
+    @endif
 </div>
