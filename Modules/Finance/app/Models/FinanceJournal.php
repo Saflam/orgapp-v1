@@ -17,6 +17,7 @@ class FinanceJournal extends Model
         'organization_id',
         'finance_scope_id',
         'finance_period_id',
+        'unit_id',
         'journal_number',
         'transaction_date',
         'description',
@@ -43,6 +44,11 @@ class FinanceJournal extends Model
     public function scope(): BelongsTo
     {
         return $this->belongsTo(FinanceScope::class, 'finance_scope_id');
+    }
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
     }
 
     public function period(): BelongsTo

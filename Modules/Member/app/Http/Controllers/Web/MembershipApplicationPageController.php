@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Modules\Member\Enums\MembershipApplicationStatus;
 use Modules\Member\Models\MembershipApplication;
+use Modules\Member\Models\SpouseMembershipInvitation;
 use Modules\Member\Services\MembershipApplicationService;
 use Modules\Core\Models\Unit;
 use Modules\Core\Services\OrganizationIdentificationService;
@@ -169,6 +170,40 @@ class MembershipApplicationPageController
                 'accentColor' => data_get($organization, 'settings.theme.accent_color', '#d9a441'),
             ])
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    /** Render the self-service spouse application opened from an invitation. */
+    public function showSpouseInvitation(
+        Request $request,
+        string $token,
+        CurrentOrganization $currentOrganization,
+    ) {
+        $organization = $currentOrganization->get();
+        $invitation = SpouseMembershipInvitation::query()
+            ->where('organization_id', $organization->id)
+            ->where('token_hash', hash('sha256', $token))
+            ->where('status', 'pending')
+            ->where('expires_at', '>', now())
+            ->with('inviterMember.user')
+            ->firstOrFail();
+
+        abort_unless(
+            (int) $invitation->invited_user_id === (int) $request->user()->id
+            && mb_strtolower((string) $request->user()->email) === mb_strtolower($invitation->email),
+            403,
+        );
+
+        return response()->view('member::organization.membership-apply', [
+            'organization' => $organization,
+            'authenticatedUser' => $request->user(),
+            'spouseMode' => true,
+            'spousePrefill' => [],
+            'spouseApplicantName' => $invitation->inviterMember?->user?->name ?? 'the inviting member',
+            'sourceApplicationId' => null,
+            'invitationToken' => $token,
+            'primaryColor' => data_get($organization, 'settings.theme.primary_color', '#174b3d'),
+            'accentColor' => data_get($organization, 'settings.theme.accent_color', '#d9a441'),
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function configuration(

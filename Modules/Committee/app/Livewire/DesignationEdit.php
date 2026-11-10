@@ -127,11 +127,12 @@ class DesignationEdit extends Component
             ->where('is_enabled', true)
             ->pluck('module')
             ->push('Core', 'Member')
+            ->map(fn ($module): string => mb_strtolower((string) $module))
             ->unique()
             ->values();
 
         return Permission::query()
-            ->whereIn('module', $enabledModules)
+            ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(module)'), $enabledModules)
             ->orderBy('module')
             ->orderBy('name');
     }

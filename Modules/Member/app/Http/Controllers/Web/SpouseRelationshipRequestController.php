@@ -10,10 +10,15 @@ use Illuminate\Support\Facades\DB;
 use Modules\Member\Models\Member;
 use Modules\Member\Models\MemberRelationship;
 use Modules\Member\Models\SpouseRelationshipRequest;
+use Modules\Core\Services\NotificationService;
 
 class SpouseRelationshipRequestController extends Controller
 {
-    public function store(Request $request, CurrentOrganization $currentOrganization): RedirectResponse
+    public function store(
+        Request $request,
+        CurrentOrganization $currentOrganization,
+        NotificationService $notifications,
+    ): RedirectResponse
     {
         $organization = $currentOrganization->get();
         $member = Member::query()
@@ -44,7 +49,25 @@ class SpouseRelationshipRequestController extends Controller
         );
 
         if ($spouseRequest->wasRecentlyCreated && $target->user) {
-            $target->user->notify(new \Modules\Member\Notifications\SpouseRelationshipRequested($spouseRequest));
+            $requesterName = $member->full_name ?: ($member->user?->name ?? 'A member');
+
+            $notifications->notifyOnce(
+                organization: $organization,
+                user: $target->user,
+                event: 'member.spouse_relationship.requested',
+                title: 'Spouse relationship request',
+                body: "{$requesterName} has requested to identify you as their spouse. Review the request in your member profile.",
+                dedupeKey: "spouse-relationship-request:{$spouseRequest->id}:target:{$target->user->id}",
+                data: [
+                    'type' => 'spouse_relationship_request',
+                    'spouse_relationship_request_id' => $spouseRequest->id,
+                    'organization_id' => $organization->id,
+                    'requester_member_id' => $member->id,
+                    'requester_name' => $requesterName,
+                    'url' => route('organization.member.profile'),
+                ],
+                sourceModule: 'Member',
+            );
         }
 
         return redirect()->route('organization.member.profile')->with('status', 'Spouse request sent. The relationship will be created only after the other member accepts.');

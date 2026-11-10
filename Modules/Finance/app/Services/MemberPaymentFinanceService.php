@@ -41,16 +41,16 @@ class MemberPaymentFinanceService
             return $this->receiptForExistingJournal($existing);
         }
 
-        $scope = $this->resolveScope($organization, $payment);
+        // All accounting entries use the organization's single ledger. Preserve
+        // the collecting unit as transaction attribution only.
+        $scope = $this->scopes->organizationScope($organization);
+        $unitId = $this->resolveUnitAttribution($organization, $payment);
 
         $this->accounts->provisionDefaults($organization, $scope);
 
         $receivedAt = $payment->received_at ?? now();
 
-        // Financial periods are organization-wide. The journal and its accounts
-        // still use the collector's ledger scope (organization or unit).
-        $periodScope = $this->scopes->organizationScope($organization);
-        $period = $this->periods->forDate($periodScope, $receivedAt);
+        $period = $this->periods->forDate($scope, $receivedAt);
 
         if (! $period) {
             throw new \InvalidArgumentException(
@@ -90,6 +90,7 @@ class MemberPaymentFinanceService
                     'description' => 'Membership payment ' . $payment->receipt_number,
                     'source_type' => 'member_payment',
                     'source_id' => $payment->id,
+                    'unit_id' => $unitId,
                     'metadata' => [
                         'member_payment_id' => $payment->id,
                         'member_receipt_number' => $payment->receipt_number,
@@ -140,35 +141,29 @@ class MemberPaymentFinanceService
         return $this->receipts->issue($organization, $scope, $journal);
     }
 
-    private function resolveScope(
+    private function resolveUnitAttribution(
         Organization $organization,
         MemberPayment $payment,
-    ): FinanceScope {
-        if ($payment->collector_scope_type === 'unit') {
-            if ($payment->collector_scope_id === null) {
-                throw new \InvalidArgumentException(
-                    'A unit-scoped membership payment requires a collector scope ID.'
-                );
+    ): ?int {
+        if ($payment->collector_scope_type !== 'unit') {
+            if ($payment->collector_scope_type !== 'organization') {
+                throw new \InvalidArgumentException('Unsupported membership payment collector scope.');
             }
 
-            $unit = $organization->units()->find($payment->collector_scope_id);
-
-            if (! $unit) {
-                throw new \InvalidArgumentException(
-                    'The membership payment collector unit does not belong to the organization.'
-                );
-            }
-
-            return $this->scopes->unitScope($organization, $unit);
+            return null;
         }
 
-        if ($payment->collector_scope_type === 'organization') {
-            return $this->scopes->organizationScope($organization);
+        if ($payment->collector_scope_id === null) {
+            throw new \InvalidArgumentException('A unit-scoped membership payment requires a collector scope ID.');
         }
 
-        throw new \InvalidArgumentException(
-            'Unsupported membership payment collector scope.'
-        );
+        $unit = $organization->units()->find($payment->collector_scope_id);
+
+        if (! $unit) {
+            throw new \InvalidArgumentException('The membership payment collector unit does not belong to the organization.');
+        }
+
+        return (int) $unit->id;
     }
 
     private function resolveDepositAccount(

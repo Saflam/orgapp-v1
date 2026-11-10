@@ -36,7 +36,7 @@ class FinanceFoundationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_finance_scopes_are_created_for_organization_and_units(): void
+    public function test_finance_provisions_only_an_organization_scope(): void
     {
         $organization = Organization::factory()->create();
         $unit = Unit::factory()->create(['organization_id' => $organization->id]);
@@ -49,14 +49,14 @@ class FinanceFoundationTest extends TestCase
             'scope_type' => FinanceScopeType::ORGANIZATION->value,
             'scope_id' => $organization->id,
         ]);
-        $this->assertDatabaseHas('finance_scopes', [
+        $this->assertDatabaseMissing('finance_scopes', [
             'organization_id' => $organization->id,
             'scope_type' => FinanceScopeType::UNIT->value,
             'scope_id' => $unit->id,
         ]);
     }
 
-    public function test_default_accounts_are_provisioned_per_scope(): void
+    public function test_default_accounts_are_provisioned_for_the_organization_wide_chart(): void
     {
         $organization = Organization::factory()->create();
         $scope = app(FinanceScopeService::class)->organizationScope($organization);
@@ -90,7 +90,7 @@ class FinanceFoundationTest extends TestCase
         $this->assertSame(FinanceItemSource::MODULE, $second->source);
     }
 
-    public function test_financial_period_can_be_created_for_a_scope(): void
+    public function test_financial_period_can_be_created_for_the_organization(): void
     {
         $organization = Organization::factory()->create();
         $scope = app(FinanceScopeService::class)->organizationScope($organization);
@@ -141,7 +141,7 @@ class FinanceFoundationTest extends TestCase
         );
     }
 
-    public function test_financial_periods_cannot_overlap_within_a_scope(): void
+    public function test_financial_periods_cannot_overlap_within_the_organization(): void
     {
         $organization = Organization::factory()->create();
         $scope = app(FinanceScopeService::class)->organizationScope($organization);
@@ -167,30 +167,33 @@ class FinanceFoundationTest extends TestCase
         ]);
     }
 
-    public function test_financial_periods_can_have_same_dates_in_different_scopes(): void
+    public function test_unit_scope_cannot_create_a_separate_financial_period(): void
     {
         $organization = Organization::factory()->create();
         $unit = Unit::factory()->create(['organization_id' => $organization->id]);
-        $scopeService = app(FinanceScopeService::class);
-        $organizationScope = $scopeService->organizationScope($organization);
-        $unitScope = $scopeService->unitScope($organization, $unit);
-        $service = app(FinancePeriodService::class);
+        $unitScope = app(FinanceScopeService::class)->unitScope($organization, $unit);
 
-        $organizationPeriod = $service->create($organization, $organizationScope, [
-            'name' => 'FY 2026',
-            'code' => 'FY2026',
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Financial periods must belong to the organization-wide ledger.');
+
+        app(FinancePeriodService::class)->create($organization, $unitScope, [
+            'name' => 'Unit FY 2026',
+            'code' => 'UNIT-FY2026',
             'starts_on' => '2026-01-01',
             'ends_on' => '2026-12-31',
         ]);
+    }
 
-        $unitPeriod = $service->create($organization, $unitScope, [
-            'name' => 'FY 2026',
-            'code' => 'FY2026',
-            'starts_on' => '2026-01-01',
-            'ends_on' => '2026-12-31',
-        ]);
+    public function test_unit_scope_cannot_provision_a_separate_chart_of_accounts(): void
+    {
+        $organization = Organization::factory()->create();
+        $unit = Unit::factory()->create(['organization_id' => $organization->id]);
+        $unitScope = app(FinanceScopeService::class)->unitScope($organization, $unit);
 
-        $this->assertNotSame($organizationPeriod->id, $unitPeriod->id);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Finance accounts must belong to the organization-wide chart of accounts.');
+
+        app(FinanceAccountProvisioningService::class)->provisionDefaults($organization, $unitScope);
     }
 
     public function test_financial_period_can_be_closed(): void
@@ -335,11 +338,22 @@ class FinanceFoundationTest extends TestCase
         $otherScope = $scopeService->unitScope($organization, $unit);
         $provisioner = app(FinanceAccountProvisioningService::class);
         $provisioner->provisionDefaults($organization, $scope);
-        $provisioner->provisionDefaults($organization, $otherScope);
+        // Simulate a legacy unit-scope account so the journal service continues
+        // to prove it rejects cross-scope account references in historical data.
+        $otherCash = FinanceAccount::create([
+            'organization_id' => $organization->id,
+            'finance_scope_id' => $otherScope->id,
+            'code' => '1000',
+            'name' => 'Legacy Unit Cash',
+            'account_type' => FinanceAccountType::ASSET,
+            'normal_balance' => FinanceNormalBalance::DEBIT,
+            'is_system_managed' => true,
+            'is_active' => true,
+            'metadata' => [],
+        ]);
         $period = app(FinancePeriodService::class)->create($organization, $scope, [
             'name' => 'FY 2026', 'code' => 'FY2026', 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31',
         ]);
-        $otherCash = FinanceAccount::query()->where('finance_scope_id', $otherScope->id)->where('code', '1000')->firstOrFail();
         $income = FinanceAccount::query()->where('finance_scope_id', $scope->id)->where('code', '4000')->firstOrFail();
 
         $this->expectException(\InvalidArgumentException::class);
@@ -518,27 +532,21 @@ class FinanceFoundationTest extends TestCase
         $scopeService = app(FinanceScopeService::class);
         $scope = $scopeService->organizationScope($organization);
         $otherScope = $scopeService->unitScope($organization, $unit);
-        app(FinanceAccountProvisioningService::class)->provisionDefaults($organization, $scope);
-        app(FinanceAccountProvisioningService::class)->provisionDefaults($organization, $otherScope);
         $period = app(FinancePeriodService::class)->create($organization, $scope, [
             'name' => 'FY 2026', 'code' => 'FY2026', 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31',
         ]);
-        $cash = FinanceAccount::query()->where('finance_scope_id', $otherScope->id)->where('code', '1000')->firstOrFail();
-        $income = FinanceAccount::query()->where('finance_scope_id', $otherScope->id)->where('code', '4000')->firstOrFail();
-        // Financial periods are organization-level only. The journal still uses
-        // the unit ledger scope, but references the organization's period.
-        $journal = app(FinanceJournalService::class)->post(
-            $organization,
-            $otherScope,
-            $period,
-            [
-                'transaction_date' => '2026-10-08',
-                'lines' => [
-                    ['finance_account_id' => $cash->id, 'debit' => '1000.00'],
-                    ['finance_account_id' => $income->id, 'credit' => '1000.00'],
-                ],
-            ],
-        );
+
+        // Simulate a legacy posted journal from a unit scope. New journals must
+        // use the organization ledger, but receipt issuance must still reject
+        // historical journals whose scope does not match the requested scope.
+        $journal = FinanceJournal::create([
+            'organization_id' => $organization->id,
+            'finance_scope_id' => $otherScope->id,
+            'finance_period_id' => $period->id,
+            'journal_number' => 'JRN-LEGACY-UNIT',
+            'transaction_date' => '2026-10-08',
+            'status' => FinanceJournalStatus::POSTED,
+        ]);
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('The journal does not belong to the finance scope.');
@@ -628,7 +636,7 @@ class FinanceFoundationTest extends TestCase
         $this->assertEquals(500.0, (float) $journal->lines->sum('credit'));
     }
 
-    public function test_unit_collected_membership_payment_uses_organization_period_and_unit_ledger(): void
+    public function test_unit_collected_membership_payment_uses_organization_ledger_with_unit_attribution(): void
     {
         $organization = Organization::factory()->create();
         app(OrganizationModuleService::class)->enable($organization, 'Core');
@@ -637,8 +645,6 @@ class FinanceFoundationTest extends TestCase
         $unit = Unit::factory()->create(['organization_id' => $organization->id]);
         $scopes = app(FinanceScopeService::class);
         $organizationScope = $scopes->organizationScope($organization);
-        $unitScope = $scopes->unitScope($organization, $unit);
-
         $period = app(FinancePeriodService::class)->create($organization, $organizationScope, [
             'name' => 'FY 2026',
             'code' => 'FY2026',
@@ -666,7 +672,8 @@ class FinanceFoundationTest extends TestCase
             ->where('source_id', $payment->id)
             ->firstOrFail();
 
-        $this->assertSame($unitScope->id, $journal->finance_scope_id);
+        $this->assertSame($organizationScope->id, $journal->finance_scope_id);
+        $this->assertSame($unit->id, $journal->unit_id);
         $this->assertSame($period->id, $journal->finance_period_id);
         $this->assertSame($organizationScope->id, $journal->period->finance_scope_id);
     }
@@ -839,6 +846,88 @@ class FinanceFoundationTest extends TestCase
             'source_type' => 'member_payment',
             'source_id' => $payment->id,
         ]);
+    }
+
+    public function test_manual_chart_accounts_use_organization_scope_and_derived_normal_balance(): void
+    {
+        $organization = Organization::factory()->create();
+        $scope = app(FinanceScopeService::class)->organizationScope($organization);
+        $chart = app(\Modules\Finance\Services\FinanceChartOfAccountsService::class);
+
+        $parent = $chart->createManual($organization, $scope, [
+            'code' => '5100', 'name' => 'Operating Expenses', 'account_type' => 'expense',
+        ]);
+        $child = $chart->createManual($organization, $scope, [
+            'code' => '5110', 'name' => 'Office Supplies', 'account_type' => 'expense', 'parent_id' => $parent->id,
+        ]);
+
+        $this->assertSame(FinanceNormalBalance::DEBIT, $parent->normal_balance);
+        $this->assertSame($parent->id, $child->parent_id);
+        $this->assertFalse($child->is_system_managed);
+        $this->assertSame($organization->id, $child->organization_id);
+        $this->assertSame($scope->id, $child->finance_scope_id);
+    }
+
+    public function test_chart_rejects_parent_from_another_account_type_or_organization(): void
+    {
+        $organization = Organization::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $scope = app(FinanceScopeService::class)->organizationScope($organization);
+        $otherScope = app(FinanceScopeService::class)->organizationScope($otherOrganization);
+        $chart = app(\Modules\Finance\Services\FinanceChartOfAccountsService::class);
+        $asset = $chart->createManual($organization, $scope, ['code' => '1300', 'name' => 'Equipment', 'account_type' => 'asset']);
+        $foreign = $chart->createManual($otherOrganization, $otherScope, ['code' => '1310', 'name' => 'Foreign Asset', 'account_type' => 'asset']);
+
+        try {
+            $chart->createManual($organization, $scope, ['code' => '4100', 'name' => 'Income', 'account_type' => 'income', 'parent_id' => $asset->id]);
+            $this->fail('A parent with a different account type must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('same account type', $exception->getMessage());
+        }
+
+        try {
+            $chart->createManual($organization, $scope, ['code' => '1320', 'name' => 'Invalid Child', 'account_type' => 'asset', 'parent_id' => $foreign->id]);
+            $this->fail('A parent from another organization must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('this organization chart', $exception->getMessage());
+        }
+    }
+
+    public function test_system_managed_accounts_cannot_be_edited_or_deactivated(): void
+    {
+        $organization = Organization::factory()->create();
+        $scope = app(FinanceScopeService::class)->organizationScope($organization);
+        $account = app(FinanceAccountProvisioningService::class)->ensure($organization, $scope, [
+            'code' => '4000', 'name' => 'Sales Income', 'account_type' => 'income', 'normal_balance' => 'credit',
+        ]);
+        $chart = app(\Modules\Finance\Services\FinanceChartOfAccountsService::class);
+
+        try {
+            $chart->updateManual($organization, $scope, $account, ['code' => '4001', 'name' => 'Changed', 'parent_id' => null]);
+            $this->fail('System-managed account editing must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('System-managed', $exception->getMessage());
+        }
+
+        try {
+            $chart->deactivate($organization, $scope, $account);
+            $this->fail('System-managed account deactivation must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('System-managed', $exception->getMessage());
+        }
+    }
+
+    public function test_manual_account_cannot_be_deactivated_while_it_has_active_children(): void
+    {
+        $organization = Organization::factory()->create();
+        $scope = app(FinanceScopeService::class)->organizationScope($organization);
+        $chart = app(\Modules\Finance\Services\FinanceChartOfAccountsService::class);
+        $parent = $chart->createManual($organization, $scope, ['code' => '5200', 'name' => 'General Expenses', 'account_type' => 'expense']);
+        $chart->createManual($organization, $scope, ['code' => '5210', 'name' => 'Travel', 'account_type' => 'expense', 'parent_id' => $parent->id]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('active child accounts');
+        $chart->deactivate($organization, $scope, $parent);
     }
 
 }

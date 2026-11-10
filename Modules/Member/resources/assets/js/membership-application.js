@@ -628,6 +628,11 @@
             }
         }
         if (root.dataset.spouseMode === 'true') {
+            const invitedEmail = form.querySelector('[name="email"]');
+            if (invitedEmail && root.dataset.spouseInvitationToken) {
+                invitedEmail.value = root.dataset.userEmail || '';
+                invitedEmail.readOnly = true;
+            }
             try {
                 const prefill = JSON.parse(root.dataset.spousePrefill || '{}');
                 // Backwards compatibility with the earlier addresses-only payload.
@@ -865,7 +870,12 @@
     const buildSubmissionData = () => {
         const data = new FormData(form);
         if (root.dataset.spouseMode === 'true') {
-            data.append('source_application_id', new URL(window.location.href).searchParams.get('source_application') || '');
+            const invitationToken = root.dataset.spouseInvitationToken || '';
+            if (invitationToken) {
+                data.append('invitation_token', invitationToken);
+            } else {
+                data.append('source_application_id', new URL(window.location.href).searchParams.get('source_application') || '');
+            }
             data.append('spouse_registration', '1');
         }
         let phoneIndex = 0;

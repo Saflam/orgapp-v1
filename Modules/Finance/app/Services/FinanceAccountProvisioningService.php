@@ -16,8 +16,21 @@ class FinanceAccountProvisioningService
         FinanceScope $scope,
         array $definition,
     ): FinanceAccount {
-        if ($scope->organization_id !== $organization->id) {
-            throw new \InvalidArgumentException('The finance scope does not belong to the organization.');
+        $this->assertOrganizationScope($organization, $scope);
+
+        if (! empty($definition['parent_id'])) {
+            $parent = FinanceAccount::query()
+                ->where('organization_id', $organization->id)
+                ->where('finance_scope_id', $scope->id)
+                ->find($definition['parent_id']);
+
+            if (! $parent) {
+                throw new \InvalidArgumentException('The parent account must belong to the organization-wide chart of accounts.');
+            }
+
+            if (! $parent->is_active) {
+                throw new \InvalidArgumentException('An inactive account cannot be used as a parent account.');
+            }
         }
 
         $type = $definition['account_type'] instanceof FinanceAccountType
@@ -48,6 +61,8 @@ class FinanceAccountProvisioningService
 
     public function provisionDefaults(Organization $organization, FinanceScope $scope): void
     {
+        $this->assertOrganizationScope($organization, $scope);
+
         DB::transaction(function () use ($organization, $scope): void {
             $defaults = [
                 ['code' => '1000', 'name' => 'Cash', 'account_type' => 'asset', 'normal_balance' => 'debit'],
@@ -63,5 +78,16 @@ class FinanceAccountProvisioningService
                 $this->ensure($organization, $scope, $definition);
             }
         });
+    }
+
+    private function assertOrganizationScope(Organization $organization, FinanceScope $scope): void
+    {
+        if ($scope->organization_id !== $organization->id) {
+            throw new \InvalidArgumentException('The finance scope does not belong to the organization.');
+        }
+
+        if (! $scope->isOrganizationScope()) {
+            throw new \InvalidArgumentException('Finance accounts must belong to the organization-wide chart of accounts.');
+        }
     }
 }

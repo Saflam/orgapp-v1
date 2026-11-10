@@ -315,7 +315,11 @@ class StoreMembershipApplicationRequest extends FormRequest
             'company_address' => ['nullable', 'string', 'max:255'],
             'preferred_unit_id' => [($this->routeIs('organization.membership.apply.submit') || $this->routeIs('organization.membership.apply.spouse.submit')) ? 'required' : 'sometimes', 'nullable', 'integer', $organization instanceof Organization ? Rule::exists('units', 'id')->where('organization_id', $organization->id)->where('is_active', true) : 'exists:units,id'],
             'profile_photo' => [$profilePhotoRequired ? 'required' : 'sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
-            'email' => [$this->routeIs('organization.membership.apply.spouse.submit') ? 'required' : 'sometimes', 'nullable', 'email', 'max:255', Rule::unique('users', 'email')],
+            'email' => [
+                $this->routeIs('organization.membership.apply.spouse.submit') && ! $this->filled('invitation_token') ? 'required' : 'sometimes',
+                'nullable', 'email', 'max:255',
+                Rule::unique('users', 'email')->ignore($this->filled('invitation_token') ? $this->user()?->id : null),
+            ],
             'first_name' => [
                 'required',
                 'string',
@@ -456,7 +460,8 @@ class StoreMembershipApplicationRequest extends FormRequest
             'spouse.needed' => ['sometimes', 'in:yes,no'],
             'spouse.existing' => ['required_if:spouse.needed,yes', 'nullable', 'in:yes,no'],
             'spouse.member_id' => ['required_if:spouse.existing,yes', 'nullable', 'integer', $organization instanceof Organization ? Rule::exists('members', 'id')->where('organization_id', $organization->id) : 'exists:members,id'],
-            'source_application_id' => [$this->routeIs('organization.membership.apply.spouse.submit') ? 'required' : 'sometimes', 'nullable', 'integer', 'exists:membership_applications,id'],
+            'source_application_id' => [$this->routeIs('organization.membership.apply.spouse.submit') && ! $this->filled('invitation_token') ? 'required' : 'sometimes', 'nullable', 'integer', 'exists:membership_applications,id'],
+            'invitation_token' => ['sometimes', 'required', 'string', 'size:64'],
             'phone_numbers' => ['sometimes', 'array', 'max:10'],
             'emergency_contacts' => [($this->routeIs('organization.membership.apply.submit') || $this->routeIs('organization.membership.apply.spouse.submit')) ? 'required' : 'sometimes', 'array', 'min:1', 'max:5'],
         ];

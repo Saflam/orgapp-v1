@@ -12,6 +12,7 @@ use Modules\Member\Http\Controllers\Web\MemberPortalController;
 use Modules\Member\Http\Controllers\Web\AdminMemberProfileController;
 use Modules\Member\Http\Controllers\Web\MemberPaymentManagementController;
 use Modules\Member\Http\Controllers\Web\SpouseRelationshipRequestController;
+use Modules\Member\Http\Controllers\Web\AdminSpouseManagementController;
 
 Route::middleware(['auth', 'organization', 'organization.access'])
     ->group(function (): void {
@@ -26,6 +27,14 @@ Route::middleware(['auth', 'organization', 'organization.access'])
             ->whereNumber('member')
             ->middleware('module:Member')
             ->name('member.profile');
+        Route::post('/organization/members/{member}/payment-obligations', [AdminMemberProfileController::class, 'addPaymentObligation'])
+            ->whereNumber('member')->middleware('module:Member')->name('member.profile.payment-obligations.store');
+        Route::post('/organization/members/{member}/payments', [AdminMemberProfileController::class, 'collectMemberPayment'])
+            ->whereNumber('member')->middleware('module:Member')->name('member.profile.payments.store');
+        Route::post('/organization/members/{member}/spouses/invite', [AdminSpouseManagementController::class, 'invite'])
+            ->whereNumber('member')->middleware('module:Member')->name('member.profile.spouses.invite');
+        Route::post('/organization/members/{member}/spouses/request-existing', [AdminSpouseManagementController::class, 'requestExisting'])
+            ->whereNumber('member')->middleware('module:Member')->name('member.profile.spouses.request-existing');
         Route::get('/organization/members/{member}/dependants/{dependant}/photo', [AdminMemberProfileController::class, 'dependantPhoto'])
             ->whereNumber('member')
             ->whereNumber('dependant')
@@ -194,6 +203,9 @@ Route::middleware(['organization', 'auth'])->group(function (): void {
 
         Route::get('/membership/apply/spouse', [MembershipApplicationPageController::class, 'showSpouse'])
             ->name('organization.membership.apply.spouse');
+        Route::get('/membership/apply/spouse-invitation/{token}', [MembershipApplicationPageController::class, 'showSpouseInvitation'])
+            ->where('token', '[A-Za-z0-9]{64}')
+            ->name('organization.membership.apply.spouse-invitation');
 
         Route::post('/membership/apply/spouse', [MembershipApplicationController::class, 'storeSpouse'])
             ->name('organization.membership.apply.spouse.submit');

@@ -88,15 +88,10 @@ class CommitteeAuthorizationContributor implements AuthorizationContributor
             }
 
             if ($designation->scope === DesignationScope::CENTRAL) {
-                if ($committee->unit_id === null) {
-                    return true;
-                }
-
-                if ($context->unitId !== null && $committee->unit_id === $context->unitId) {
-                    return true;
-                }
-
-                continue;
+                // A central designation is organization-wide. The committee may
+                // optionally be associated with a headquarters unit for
+                // administrative purposes; that must not narrow its authority.
+                return true;
             }
 
             if (

@@ -228,5 +228,9 @@ class FinancePeriodService
         if ($scope->organization_id !== $organization->id) {
             throw new \InvalidArgumentException('The finance scope does not belong to the organization.');
         }
+
+        if (! $scope->isOrganizationScope()) {
+            throw new \InvalidArgumentException('Financial periods must belong to the organization-wide ledger.');
+        }
     }
 }

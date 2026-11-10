@@ -20,6 +20,8 @@
     $canViewMembersDirectory = false;
     $canViewMemberPayments = false;
     $canViewFinancePeriods = false;
+    $canViewFinanceAccounts = false;
+    $canViewFinanceTaxes = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -27,10 +29,19 @@
     if ($layoutUser && ! $layoutUser->is_system_admin && $brandingOrganization) {
         $membershipAuthorization = app(\Modules\Core\Services\AuthorizationService::class);
         $membershipOrganizationContext = new \Modules\Core\Data\AuthorizationContext((int) $brandingOrganization->id);
-        $canViewFinancePeriods = \Illuminate\Support\Facades\Route::has('finance.periods')
-            && app(\Modules\Core\Services\OrganizationModuleService::class)->isEnabled($brandingOrganization, 'Finance')
+        $financeModuleEnabled = app(\Modules\Core\Services\OrganizationModuleService::class)->isEnabled($brandingOrganization, 'Finance');
+        $canViewFinancePeriods = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.periods')
             && ($membershipAuthorization->can($layoutUser, 'finance.period.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'finance.period.manage', $membershipOrganizationContext));
+        $canViewFinanceAccounts = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.accounts')
+            && ($membershipAuthorization->can($layoutUser, 'finance.account.view', $membershipOrganizationContext)
+                || $membershipAuthorization->can($layoutUser, 'finance.account.manage', $membershipOrganizationContext));
+        $canViewFinanceTaxes = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.taxes')
+            && ($membershipAuthorization->can($layoutUser, 'finance.tax.view', $membershipOrganizationContext)
+                || $membershipAuthorization->can($layoutUser, 'finance.tax.manage', $membershipOrganizationContext));
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -178,6 +189,32 @@
                         </div>
                     </details>
                 @endif
+                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes)
+                    @php($financeNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
+                    <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
+                        <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
+                            <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="nav-sublist">
+                            <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
+                                <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
+                                    <span class="nav-icon" aria-hidden="true">⚙</span><span>Account Settings</span><span class="nav-chevron" aria-hidden="true"></span>
+                                </summary>
+                                <div class="nav-sublist">
+                                    @if ($canViewFinanceAccounts)
+                                        <a class="nav-link {{ request()->routeIs('finance.accounts') ? 'active' : '' }}" href="{{ route('finance.accounts') }}"><span class="nav-icon" aria-hidden="true">▤</span><span>Chart of Accounts</span></a>
+                                    @endif
+                                    @if ($canViewFinancePeriods)
+                                        <a class="nav-link {{ request()->routeIs('finance.periods') ? 'active' : '' }}" href="{{ route('finance.periods') }}"><span class="nav-icon" aria-hidden="true">▦</span><span>Financial Periods</span></a>
+                                    @endif
+                                    @if ($canViewFinanceTaxes)
+                                        <a class="nav-link {{ request()->routeIs('finance.taxes') ? 'active' : '' }}" href="{{ route('finance.taxes') }}"><span class="nav-icon" aria-hidden="true">％</span><span>Tax Configuration</span></a>
+                                    @endif
+                                </div>
+                            </details>
+                        </div>
+                    </details>
+                @endif
             </nav>
         @endunless
 
@@ -188,7 +225,7 @@
                 <a class="nav-link {{ request()->routeIs('organization.home') ? 'active' : '' }}" href="{{ route('organization.home') }}" target="_self">
                     <span class="nav-icon" aria-hidden="true">⌂</span><span>Organization Home</span>
                 </a>
-                @php($organizationSettingsActive = request()->routeIs('core.organization.settings', 'core.organization.notifications', 'finance.periods'))
+                @php($organizationSettingsActive = request()->routeIs('core.organization.settings', 'core.organization.notifications'))
                 <details class="nav-group" {{ $organizationSettingsActive ? 'open' : '' }}>
                     <summary class="nav-group-toggle {{ $organizationSettingsActive ? 'active' : '' }}">
                         <span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -196,9 +233,6 @@
                     <div class="nav-sublist">
                         <a class="nav-link {{ request()->routeIs('core.organization.settings') ? 'active' : '' }}" href="{{ route('core.organization.settings') }}"><span class="nav-icon" aria-hidden="true">⚙</span><span>Organization Settings</span></a>
                         <a class="nav-link {{ request()->routeIs('core.organization.notifications') ? 'active' : '' }}" href="{{ route('core.organization.notifications') }}"><span class="nav-icon" aria-hidden="true">◉</span><span>Notification Settings</span></a>
-                        @if ($canViewFinancePeriods)
-                            <a class="nav-link {{ request()->routeIs('finance.periods') ? 'active' : '' }}" href="{{ route('finance.periods') }}"><span class="nav-icon" aria-hidden="true">▦</span><span>Finance Settings</span></a>
-                        @endif
                     </div>
                 </details>
             </nav>

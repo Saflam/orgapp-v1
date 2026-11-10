@@ -27,6 +27,7 @@
      data-spouse-mode="{{ ($spouseMode ?? false) ? 'true' : 'false' }}"
      data-spouse-applicant-name="{{ $spouseApplicantName ?? '' }}"
      data-spouse-prefill="{{ e(json_encode($spousePrefill ?? [])) }}"
+     data-spouse-invitation-token="{{ $invitationToken ?? '' }}"
      data-user-id="{{ $authenticatedUser->id }}"
      data-user-name="{{ $authenticatedUser->name }}"
      data-user-email="{{ $authenticatedUser->email }}"
@@ -57,7 +58,7 @@
                         <h1 class="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{{ ($spouseMode ?? false) ? ('Apply as ' . ($spouseApplicantName ?: ($authenticatedUser->name ?: 'Applicant')) . "'s spouse") : 'Become a member' }}</h1>
                         @if ($spouseMode ?? false)
                             <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-                                Your application has been submitted. Complete a separate application for {{ $spouseApplicantName ?? 'your spouse' }}; the details below are prefilled where possible and can be changed.
+                                You were invited by {{ $spouseApplicantName ?? 'an organization member' }}. Complete your own application using your personal details. Your information will be reviewed by the organization.
                             </p>
                         @else
                             <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">Share a few details to get started. Step 1 is saved securely when you continue, so you can return later. Your full application is submitted only at the end.</p>

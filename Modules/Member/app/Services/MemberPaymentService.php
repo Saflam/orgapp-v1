@@ -387,11 +387,54 @@ class MemberPaymentService
         }
     }
 
-    public function recordPayment(Collection|array $obligations,User $actor,string $scopeType,?int $scopeId=null,?string $paymentMethod=null,?string $reference=null,array $metadata=[]): MemberPayment
+
+    /** Create a member obligation from an active organization payment item and its effective rate. */
+    public function createMemberObligation(Member $member, int $paymentItemId, string $dueDate): MemberPaymentObligation
+    {
+        return DB::transaction(function () use ($member, $paymentItemId, $dueDate) {
+            $membership = $member->memberships()
+                ->where('status', MembershipStatus::ACTIVE)
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+            if (! $membership) {
+                throw ValidationException::withMessages(['payment_item_id' => 'An active membership is required before adding a payment obligation.']);
+            }
+
+            $item = MemberPaymentItem::query()
+                ->where('organization_id', $member->organization_id)
+                ->where('is_active', true)
+                ->where(function ($query) use ($membership) {
+                    $query->whereNull('membership_type_id')->orWhere('membership_type_id', $membership->membership_type_id);
+                })
+                ->with('rates.allocations')
+                ->findOrFail($paymentItemId);
+
+            $due = Carbon::parse($dueDate)->startOfDay();
+            $rate = $this->rateFor($item, $due->toDateString());
+            if (! $rate) {
+                throw ValidationException::withMessages(['payment_item_id' => 'No configured rate is effective for this payment item on the selected due date.']);
+            }
+
+            $occurrence = $this->occurrenceKey($item, $due);
+            $existing = MemberPaymentObligation::query()
+                ->where('member_id', $member->id)
+                ->where('member_payment_item_id', $item->id)
+                ->where('occurrence_key', $occurrence)
+                ->exists();
+            if ($existing) {
+                throw ValidationException::withMessages(['payment_item_id' => 'An obligation for this payment item and due date already exists.']);
+            }
+
+            return $this->createObligationForMember($membership, $member, $item, $due);
+        });
+    }
+
+    public function recordPayment(Collection|array $obligations,User $actor,string $scopeType,?int $scopeId=null,?string $paymentMethod=null,?string $reference=null,array $metadata=[],array $amountsByObligationId=[]): MemberPayment
     {
         $obligations=collect($obligations)->map(fn($o)=>$o instanceof MemberPaymentObligation?$o:MemberPaymentObligation::findOrFail($o))->values();
         if($obligations->isEmpty()) throw ValidationException::withMessages(['obligation_ids'=>'At least one payment obligation is required.']);
-        return DB::transaction(function() use($obligations,$actor,$scopeType,$scopeId,$paymentMethod,$reference,$metadata){
+        return DB::transaction(function() use($obligations,$actor,$scopeType,$scopeId,$paymentMethod,$reference,$metadata,$amountsByObligationId){
             $this->lockMutualSpouseObligations($obligations);
             $obligations=$obligations->map(fn($o)=>$o->refresh()->load('allocations'))->values();
             $orgId=$obligations->first()->organization_id; $memberId=$obligations->first()->member_id; $applicationId=$obligations->first()->membership_application_id; $membershipId=$obligations->first()->membership_id;
@@ -404,11 +447,24 @@ class MemberPaymentService
             $this->validateCollectorScope($obligations->first(),$scopeType,$scopeId);
             $currency=$obligations->first()->currency;
             if($obligations->contains(fn($o)=>$o->currency!==$currency)) throw ValidationException::withMessages(['payment'=>'All selected obligations must use the same currency.']);
-            $total=round($obligations->sum(fn($o)=>max(0,(float)$o->payable_amount-(float)$o->paid_amount)),2);
-            $payment=MemberPayment::create(['organization_id'=>$orgId,'membership_application_id'=>$applicationId,'membership_id'=>$membershipId,'member_id'=>$memberId,'receipt_number'=>'MP-'.strtoupper(bin2hex(random_bytes(8))),'total_amount'=>$total,'currency'=>$currency,'payment_method'=>$paymentMethod,'reference'=>$reference,'collector_scope_type'=>$scopeType,'collector_scope_id'=>$scopeId,'received_at'=>now(),'received_by'=>$actor->id,'metadata'=>$metadata]);
+            $collectionAmounts = [];
+            foreach ($obligations as $obligation) {
+                $outstanding = round(max(0, (float) $obligation->payable_amount - (float) $obligation->paid_amount), 2);
+                $amount = array_key_exists($obligation->id, $amountsByObligationId)
+                    ? round((float) $amountsByObligationId[$obligation->id], 2)
+                    : $outstanding;
+                if ($amount <= 0 || $amount - $outstanding > 0.0001) {
+                    throw ValidationException::withMessages(['amounts.'.$obligation->id => 'The collection amount must be greater than zero and cannot exceed the outstanding balance.']);
+                }
+                $collectionAmounts[$obligation->id] = $amount;
+            }
+            $total = round(array_sum($collectionAmounts), 2);
+            $payment=MemberPayment::create(['organization_id'=>$orgId,'membership_application_id'=>$applicationId,'membership_id'=>$membershipId,'member_id'=>$memberId,'receipt_number'=>'MP-'.strtoupper(bin2hex(random_bytes(8))),'total_amount'=>$total,'currency'=>$currency,'payment_method'=>$paymentMethod,'reference'=>$reference,'collector_scope_type'=>$scopeType,'collector_scope_id'=>$scopeId,'received_at'=>!empty($metadata['received_at'])?Carbon::parse($metadata['received_at']):now(),'received_by'=>$actor->id,'metadata'=>$metadata]);
             foreach($obligations as $obligation) {
-                $this->settleObligation($payment,$obligation,round((float)$obligation->payable_amount-(float)$obligation->paid_amount,2));
-                $this->coverActiveSpouseObligation($obligation);
+                $this->settleObligation($payment,$obligation,$collectionAmounts[$obligation->id]);
+                if ($obligation->fresh()->status === MemberPaymentObligationStatus::PAID) {
+                    $this->coverActiveSpouseObligation($obligation->fresh());
+                }
             }
             MembershipPaymentReceived::dispatch($payment->refresh()->load(['lines.obligation.paymentItem','lines.allocations','member.user','application.user']));
             return $payment->refresh()->load('lines.obligation');

@@ -11,8 +11,10 @@ class FinancePermissionProvider implements PermissionProvider
         return [
             ['module' => 'finance', 'name' => 'View Financial Periods', 'code' => 'finance.period.view', 'description' => 'View organization-wide financial periods.'],
             ['module' => 'finance', 'name' => 'Manage Financial Periods', 'code' => 'finance.period.manage', 'description' => 'Create, edit, and close organization-wide financial periods.'],
-            ['module' => 'finance', 'name' => 'View Finance Accounts', 'code' => 'finance.account.view', 'description' => 'View chart of accounts within the authorized financial scope.'],
-            ['module' => 'finance', 'name' => 'Manage Finance Accounts', 'code' => 'finance.account.manage', 'description' => 'Create and manage finance accounts within the authorized financial scope.'],
+            ['module' => 'finance', 'name' => 'View Chart of Accounts', 'code' => 'finance.account.view', 'description' => 'View the organization-wide chart of accounts.'],
+            ['module' => 'finance', 'name' => 'Manage Chart of Accounts', 'code' => 'finance.account.manage', 'description' => 'Create, edit, and deactivate manually managed organization-wide accounts.'],
+            ['module' => 'finance', 'name' => 'View Tax Configuration', 'code' => 'finance.tax.view', 'description' => 'View organization-wide tax rates and tax groups.'],
+            ['module' => 'finance', 'name' => 'Manage Tax Configuration', 'code' => 'finance.tax.manage', 'description' => 'Create and manage organization-wide tax rates, tax groups and account mappings.'],
             ['module' => 'finance', 'name' => 'View Finance Items', 'code' => 'finance.item.view', 'description' => 'View finance items.'],
             ['module' => 'finance', 'name' => 'Manage Finance Items', 'code' => 'finance.item.manage', 'description' => 'Create and manage manually-owned finance items.'],
             ['module' => 'finance', 'name' => 'View Finance Customers', 'code' => 'finance.customer.view', 'description' => 'View finance customers.'],

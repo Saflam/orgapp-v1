@@ -52,11 +52,19 @@ class OrganizationRoles extends Component
             'selectedPermissions.*' => ['integer', Rule::exists('permissions', 'id')],
         ]);
 
-        $allowedModules = collect(['Core', 'Member']);
-        foreach (Permission::query()->select('module')->distinct()->pluck('module') as $module) {
-            if ($modules->isEnabled($this->organization, (string) $module)) $allowedModules->push($module);
-        }
-        $allowedIds = Permission::query()->whereIn('module', $allowedModules->unique()->all())->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $allowedModules = \Modules\Core\Models\OrganizationModule::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('is_enabled', true)
+            ->pluck('module')
+            ->push('Core', 'Member')
+            ->map(fn ($module): string => mb_strtolower((string) $module))
+            ->unique()
+            ->values();
+        $allowedIds = Permission::query()
+            ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(module)'), $allowedModules)
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
         $invalid = array_diff(array_map('strval', $validated['selectedPermissions'] ?? []), $allowedIds);
         if ($invalid !== []) {
             $this->addError('selectedPermissions', 'Some selected permissions belong to modules that are not enabled for this organization.');
@@ -95,11 +103,15 @@ class OrganizationRoles extends Component
     public function render(AuthorizationService $authorization, OrganizationModuleService $modules): View
     {
         $this->authorizeAccess($authorization, 'organization.roles.manage');
-        $enabled = collect(['Core', 'Member']);
-        foreach (Permission::query()->select('module')->distinct()->pluck('module') as $module) {
-            if ($modules->isEnabled($this->organization, (string) $module)) $enabled->push($module);
-        }
-        $permissions = Permission::query()->whereIn('module', $enabled->unique()->all())
+        $enabled = \Modules\Core\Models\OrganizationModule::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('is_enabled', true)
+            ->pluck('module')
+            ->push('Core', 'Member')
+            ->map(fn ($module): string => mb_strtolower((string) $module))
+            ->unique()
+            ->values();
+        $permissions = Permission::query()->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(module)'), $enabled)
             ->when(trim($this->permissionSearch) !== '', function ($q) {
                 $term = '%'.trim($this->permissionSearch).'%';
                 $q->where(fn ($sub) => $sub->where('name', 'like', $term)->orWhere('code', 'like', $term)->orWhere('description', 'like', $term)->orWhere('module', 'like', $term));

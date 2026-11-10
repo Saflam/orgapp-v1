@@ -20,12 +20,19 @@ use Modules\Member\Models\AdminMemberNote;
 use Modules\Member\Models\Member;
 use Modules\Member\Models\MemberDependant;
 use Modules\Member\Models\MemberDependantRelationship;
+use Modules\Member\Models\MemberRelationship;
+use Modules\Member\Models\SpouseMembershipInvitation;
+use Modules\Member\Models\SpouseRelationshipRequest;
 use Modules\Member\Models\Membership;
 use Modules\Member\Enums\MembershipStatus;
 use Modules\Member\Services\MemberProfileService;
 use Modules\Member\Services\MemberDependantService;
 use Modules\Member\Services\MemberDependantRelationshipService;
 use Modules\Member\Models\MembershipApplication;
+use Modules\Member\Models\MemberPaymentItem;
+use Modules\Member\Models\MemberPaymentObligation;
+use Modules\Member\Enums\MemberPaymentObligationStatus;
+use Modules\Member\Services\MemberPaymentService;
 use Modules\Member\Models\UserIdentification;
 use Modules\Member\Services\MemberProfileSectionExtensionRegistry;
 
@@ -54,10 +61,26 @@ class AdminMemberProfileController extends Controller
             ?? $memberRecord->memberships->sortByDesc(fn ($membership) => $membership->starts_at?->timestamp ?? 0)->first();
         $profilePhotoUrl = $memberRecord->user?->getFirstMediaUrl('profile-photo');
         $adminNotes = $memberRecord->adminNotes()->with('author')->latest('created_at')->get();
-        $paymentObligations = $memberRecord->paymentObligations()
-            ->where('organization_id', $organization->id)
-            ->orderByDesc('due_at')
-            ->get();
+        $canViewPayments = $authorization->can(auth()->user(), 'membership.payment.view', $organizationContext)
+            || ($unitContext !== null && $authorization->can(auth()->user(), 'membership.payment.view', $unitContext));
+        $canManagePayments = $authorization->can(auth()->user(), 'membership.payment.receive', $organizationContext)
+            || ($unitContext !== null && $authorization->can(auth()->user(), 'membership.payment.receive', $unitContext));
+        $paymentObligations = $canViewPayments
+            ? $memberRecord->paymentObligations()->where('organization_id', $organization->id)
+                ->with(['paymentItem', 'paymentItemRate', 'paymentLines.payment'])
+                ->orderByDesc('due_at')->get()
+            : collect();
+        $paymentItems = collect();
+        if ($canManagePayments) {
+            $activeMembershipForPayments = $memberRecord->memberships()->where('status', 'active')->latest('id')->first();
+            if ($activeMembershipForPayments) {
+                $paymentItems = MemberPaymentItem::query()->where('organization_id', $organization->id)
+                    ->where('is_active', true)
+                    ->where(function ($query) use ($activeMembershipForPayments) {
+                        $query->whereNull('membership_type_id')->orWhere('membership_type_id', $activeMembershipForPayments->membership_type_id);
+                    })->with('rates')->orderBy('title')->get();
+            }
+        }
         $applications = MembershipApplication::query()
             ->where('organization_id', $organization->id)
             ->where(function ($query) use ($memberRecord): void {
@@ -83,13 +106,91 @@ class AdminMemberProfileController extends Controller
                 ->get()
         );
 
+        $activeSpouseRelationship = MemberRelationship::query()
+            ->whereIn('relationship_type', ['spouse', 'spouse_of'])
+            ->whereNull('ended_at')
+            ->where(fn ($query) => $query->where('member_id', $memberRecord->id)->orWhere('related_member_id', $memberRecord->id))
+            ->first();
+        $activeSpouseId = $activeSpouseRelationship
+            ? ((int) $activeSpouseRelationship->member_id === (int) $memberRecord->id
+                ? $activeSpouseRelationship->related_member_id
+                : $activeSpouseRelationship->member_id)
+            : null;
+        $activeSpouse = $activeSpouseId
+            ? Member::query()->where('organization_id', $organization->id)->with(['user', 'memberships'])->find($activeSpouseId)
+            : null;
+        $pendingSpouseInvitation = SpouseMembershipInvitation::query()
+            ->where('organization_id', $organization->id)
+            ->where('inviter_member_id', $memberRecord->id)
+            ->where('status', 'pending')
+            ->where('expires_at', '>', now())
+            ->latest('id')
+            ->first();
+        $pendingSpouseRequest = SpouseRelationshipRequest::query()
+            ->where('organization_id', $organization->id)
+            ->where('status', 'pending')
+            ->where(fn ($query) => $query->where('requester_member_id', $memberRecord->id)->orWhere('target_member_id', $memberRecord->id))
+            ->with(['targetMember.user', 'application.user'])
+            ->latest('id')
+            ->first();
+        $eligibleSpouseMembers = Member::query()
+            ->where('organization_id', $organization->id)
+            ->whereKeyNot($memberRecord->id)
+            ->whereHas('memberships', fn ($query) => $query->where('status', 'active'))
+            ->whereHas('user')
+            ->whereNotExists(function ($query): void {
+                $query->selectRaw('1')->from('member_relationships')
+                    ->whereNull('ended_at')->whereIn('relationship_type', ['spouse', 'spouse_of'])
+                    ->where(function ($pair): void {
+                        $pair->whereColumn('member_relationships.member_id', 'members.id')
+                            ->orWhereColumn('member_relationships.related_member_id', 'members.id');
+                    });
+            })
+            ->with('user')->orderBy('id')->limit(200)->get();
+
         return response()
             ->view('member::organization.admin-member-profile', compact(
                 'organization', 'memberRecord', 'activeMembership', 'membershipForEdit', 'profilePhotoUrl', 'canEdit',
-                'adminNotes', 'paymentObligations', 'applications', 'moduleSections',
-                'emergencyContacts', 'identificationDocuments'
+                'adminNotes', 'paymentObligations', 'paymentItems', 'canViewPayments', 'canManagePayments', 'applications', 'moduleSections',
+                'emergencyContacts', 'identificationDocuments', 'activeSpouse', 'pendingSpouseInvitation', 'pendingSpouseRequest', 'eligibleSpouseMembers'
             ))
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function addPaymentObligation(Request $request, int $member, CurrentOrganization $currentOrganization, AuthorizationService $authorization, MemberPaymentService $payments): RedirectResponse
+    {
+        [$organization, $memberRecord, $unitContext] = $this->resolveAuthorizedMember($member, $currentOrganization, $authorization, 'view');
+        $allowed = $authorization->can($request->user(), 'membership.payment.receive', new AuthorizationContext((int) $organization->id))
+            || ($unitContext !== null && $authorization->can($request->user(), 'membership.payment.receive', $unitContext));
+        abort_unless($allowed, 403);
+        $validated = $request->validate(['payment_item_id' => ['required', 'integer'], 'due_at' => ['required', 'date']]);
+        $payments->createMemberObligation($memberRecord, (int) $validated['payment_item_id'], $validated['due_at']);
+        return redirect()->route('member.profile', $memberRecord->id)->with('status', 'Payment obligation added successfully.');
+    }
+
+    public function collectMemberPayment(Request $request, int $member, CurrentOrganization $currentOrganization, AuthorizationService $authorization, MemberPaymentService $payments): RedirectResponse
+    {
+        [$organization, $memberRecord, $unitContext] = $this->resolveAuthorizedMember($member, $currentOrganization, $authorization, 'view');
+        $allowed = $authorization->can($request->user(), 'membership.payment.receive', new AuthorizationContext((int) $organization->id))
+            || ($unitContext !== null && $authorization->can($request->user(), 'membership.payment.receive', $unitContext));
+        abort_unless($allowed, 403);
+        $validated = $request->validate([
+            'obligation_id' => ['required', 'integer'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'payment_method' => ['required', 'string', 'in:cash,bank_transfer,card,cheque,online,other'],
+            'reference' => ['nullable', 'string', 'max:150'],
+            'received_at' => ['required', 'date'],
+        ]);
+        $obligation = MemberPaymentObligation::query()->where('organization_id', $organization->id)
+            ->where('member_id', $memberRecord->id)->whereKey($validated['obligation_id'])
+            ->whereIn('status', [MemberPaymentObligationStatus::PENDING, MemberPaymentObligationStatus::PARTIALLY_PAID])->firstOrFail();
+        $unitId = $memberRecord->unit_id;
+        $isOrganizationCollector = $authorization->can($request->user(), 'membership.payment.receive', new AuthorizationContext((int) $organization->id));
+        $payment = $payments->recordPayment([$obligation], $request->user(), $isOrganizationCollector ? 'organization' : 'unit', $isOrganizationCollector ? (int) $organization->id : $unitId,
+            $validated['payment_method'], $validated['reference'] ?? null,
+            ['source' => 'admin_member_profile', 'received_at' => $validated['received_at']],
+            [$obligation->id => (float) $validated['amount']]);
+        return redirect()->route('member.profile', $memberRecord->id)->with('status', 'Payment recorded. Receipt number: '.$payment->receipt_number);
     }
 
     /**
@@ -189,7 +290,7 @@ class AdminMemberProfileController extends Controller
             'last_name' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
             'gender' => ['nullable', 'string', 'max:50'],
-            'relationship_type' => ['required', 'string', 'in:spouse,child,parent,sibling,guardian,other'],
+            'relationship_type' => ['required', 'string', 'in:child,parent,sibling,guardian,other'],
             'started_at' => ['nullable', 'date', 'before_or_equal:today'],
         ]);
 
@@ -252,7 +353,7 @@ class AdminMemberProfileController extends Controller
             'last_name' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
             'gender' => ['nullable', 'string', 'max:50'],
-            'relationship_type' => ['required', 'string', 'in:spouse,child,parent,sibling,guardian,other'],
+            'relationship_type' => ['required', 'string', 'in:child,parent,sibling,guardian,other'],
             'started_at' => ['nullable', 'date', 'before_or_equal:today'],
         ]);
 

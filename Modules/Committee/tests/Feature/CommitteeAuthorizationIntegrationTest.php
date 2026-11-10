@@ -101,6 +101,40 @@ class CommitteeAuthorizationIntegrationTest extends TestCase
         );
     }
 
+    public function test_central_designation_grants_finance_permissions_at_organization_scope_even_when_committee_has_a_unit(): void
+    {
+        [$organization, $user, $committeeMembership] = $this->createAuthorizationFixture(
+            permissionModule: 'finance',
+            membershipStart: today()->subDay()->toDateString(),
+            membershipEnd: today()->addDays(30)->toDateString(),
+            enablePermissionModule: false,
+        );
+
+        app(OrganizationModuleService::class)->enable($organization, 'Finance');
+
+        // A central committee can be linked to an administrative/headquarters
+        // unit. Its CENTRAL designation must still grant organization-wide access.
+        $unit = Unit::factory()->create(['organization_id' => $organization->id]);
+        $committeeMembership->committeeTerm->committee->update(['unit_id' => $unit->id]);
+
+        $permissions = collect([
+            ['code' => 'finance.account.view', 'name' => 'View Finance Accounts'],
+            ['code' => 'finance.period.view', 'name' => 'View Financial Periods'],
+        ])->map(fn (array $definition) => Permission::create([
+            'module' => 'finance',
+            'name' => $definition['name'],
+            'code' => $definition['code'],
+        ]));
+
+        $committeeMembership->designation->permissions()->attach($permissions->pluck('id')->all());
+
+        $authorization = app(AuthorizationService::class);
+        $context = new AuthorizationContext($organization->id);
+
+        $this->assertTrue($authorization->can($user, 'finance.account.view', $context));
+        $this->assertTrue($authorization->can($user, 'finance.period.view', $context));
+    }
+
     public function test_unit_designation_permission_is_limited_to_its_unit_context(): void
     {
         $organization = Organization::factory()->create();

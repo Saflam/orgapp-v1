@@ -309,6 +309,7 @@
             <form method="post" action="{{ route('organization.member.spouse-requests.cancel', $outgoingRequest->id) }}" onsubmit="return confirm('Cancel this spouse request?')">@csrf<button class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">Cancel request</button></form>
         </div>
     @endforeach
+    @if($spouses->isEmpty() && $spouseRequests->isEmpty() && $outgoingSpouseRequests->isEmpty())
     <div class="mt-4 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
         @if($hasAvailableSpouseMembers)
         <section class="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -374,6 +375,7 @@
         </section>
         @endif
     </div>
+    @endif
     @foreach($spouses as $spouse)
         <div class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
             <div class="flex items-center gap-3"><div class="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 font-bold" style="color:var(--org-primary)">{{ mb_substr($spouse->user?->name ?? "S",0,1) }}</div><div><p class="font-semibold">{{ $spouse->user?->name ?? "Spouse" }}</p><p class="text-sm text-slate-500">Spouse</p></div></div>

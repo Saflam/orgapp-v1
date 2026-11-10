@@ -20,6 +20,8 @@
     $canViewMembersDirectory = false;
     $canViewMemberPayments = false;
     $canViewFinancePeriods = false;
+    $canViewFinanceAccounts = false;
+    $canViewFinanceTaxes = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -27,10 +29,19 @@
     if ($layoutUser && ! $layoutUser->is_system_admin && $brandingOrganization) {
         $membershipAuthorization = app(\Modules\Core\Services\AuthorizationService::class);
         $membershipOrganizationContext = new \Modules\Core\Data\AuthorizationContext((int) $brandingOrganization->id);
-        $canViewFinancePeriods = \Illuminate\Support\Facades\Route::has('finance.periods')
-            && app(\Modules\Core\Services\OrganizationModuleService::class)->isEnabled($brandingOrganization, 'Finance')
+        $financeModuleEnabled = app(\Modules\Core\Services\OrganizationModuleService::class)->isEnabled($brandingOrganization, 'Finance');
+        $canViewFinancePeriods = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.periods')
             && ($membershipAuthorization->can($layoutUser, 'finance.period.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'finance.period.manage', $membershipOrganizationContext));
+        $canViewFinanceAccounts = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.accounts')
+            && ($membershipAuthorization->can($layoutUser, 'finance.account.view', $membershipOrganizationContext)
+                || $membershipAuthorization->can($layoutUser, 'finance.account.manage', $membershipOrganizationContext));
+        $canViewFinanceTaxes = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.taxes')
+            && ($membershipAuthorization->can($layoutUser, 'finance.tax.view', $membershipOrganizationContext)
+                || $membershipAuthorization->can($layoutUser, 'finance.tax.manage', $membershipOrganizationContext));
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -179,6 +190,32 @@
                         </div>
                     </details>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes): ?>
+                    <?php ($financeNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes')); ?>
+                    <details class="nav-group" <?php echo e($financeNavActive ? 'open' : ''); ?>>
+                        <summary class="nav-group-toggle <?php echo e($financeNavActive ? 'active' : ''); ?>">
+                            <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="nav-sublist">
+                            <details class="nav-group" <?php echo e($financeNavActive ? 'open' : ''); ?>>
+                                <summary class="nav-group-toggle <?php echo e($financeNavActive ? 'active' : ''); ?>">
+                                    <span class="nav-icon" aria-hidden="true">⚙</span><span>Account Settings</span><span class="nav-chevron" aria-hidden="true"></span>
+                                </summary>
+                                <div class="nav-sublist">
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceAccounts): ?>
+                                        <a class="nav-link <?php echo e(request()->routeIs('finance.accounts') ? 'active' : ''); ?>" href="<?php echo e(route('finance.accounts')); ?>"><span class="nav-icon" aria-hidden="true">▤</span><span>Chart of Accounts</span></a>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinancePeriods): ?>
+                                        <a class="nav-link <?php echo e(request()->routeIs('finance.periods') ? 'active' : ''); ?>" href="<?php echo e(route('finance.periods')); ?>"><span class="nav-icon" aria-hidden="true">▦</span><span>Financial Periods</span></a>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceTaxes): ?>
+                                        <a class="nav-link <?php echo e(request()->routeIs('finance.taxes') ? 'active' : ''); ?>" href="<?php echo e(route('finance.taxes')); ?>"><span class="nav-icon" aria-hidden="true">％</span><span>Tax Configuration</span></a>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                </div>
+                            </details>
+                        </div>
+                    </details>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             </nav>
         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
@@ -189,7 +226,7 @@
                 <a class="nav-link <?php echo e(request()->routeIs('organization.home') ? 'active' : ''); ?>" href="<?php echo e(route('organization.home')); ?>" target="_self">
                     <span class="nav-icon" aria-hidden="true">⌂</span><span>Organization Home</span>
                 </a>
-                <?php ($organizationSettingsActive = request()->routeIs('core.organization.settings', 'core.organization.notifications', 'finance.periods')); ?>
+                <?php ($organizationSettingsActive = request()->routeIs('core.organization.settings', 'core.organization.notifications')); ?>
                 <details class="nav-group" <?php echo e($organizationSettingsActive ? 'open' : ''); ?>>
                     <summary class="nav-group-toggle <?php echo e($organizationSettingsActive ? 'active' : ''); ?>">
                         <span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -197,9 +234,6 @@
                     <div class="nav-sublist">
                         <a class="nav-link <?php echo e(request()->routeIs('core.organization.settings') ? 'active' : ''); ?>" href="<?php echo e(route('core.organization.settings')); ?>"><span class="nav-icon" aria-hidden="true">⚙</span><span>Organization Settings</span></a>
                         <a class="nav-link <?php echo e(request()->routeIs('core.organization.notifications') ? 'active' : ''); ?>" href="<?php echo e(route('core.organization.notifications')); ?>"><span class="nav-icon" aria-hidden="true">◉</span><span>Notification Settings</span></a>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinancePeriods): ?>
-                            <a class="nav-link <?php echo e(request()->routeIs('finance.periods') ? 'active' : ''); ?>" href="<?php echo e(route('finance.periods')); ?>"><span class="nav-icon" aria-hidden="true">▦</span><span>Finance Settings</span></a>
-                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
                 </details>
             </nav>

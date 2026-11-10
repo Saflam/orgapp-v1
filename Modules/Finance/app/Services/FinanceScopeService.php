@@ -33,8 +33,9 @@ class FinanceScopeService
     public function provisionOrganizationScopes(Organization $organization): void
     {
         DB::transaction(function () use ($organization): void {
+            // Finance uses one organization-wide ledger. Units are attribution dimensions,
+            // not independent accounting scopes.
             $this->organizationScope($organization);
-            $organization->units()->where('is_active', true)->each(fn (Unit $unit) => $this->unitScope($organization, $unit));
         });
     }
 }

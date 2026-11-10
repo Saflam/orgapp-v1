@@ -427,6 +427,20 @@ class MembershipApplicationWorkflowService
             }
         }
 
+        $invitedSpouseMemberId = data_get($application->data, 'member.metadata.spouse_of_member_id');
+        if ($invitedSpouseMemberId !== null) {
+            $acceptedInvitationRequest = \Modules\Member\Models\SpouseRelationshipRequest::query()
+                ->where('organization_id', $application->organization_id)
+                ->where('requester_application_id', $application->id)
+                ->where('target_member_id', (int) $invitedSpouseMemberId)
+                ->where('status', 'accepted')
+                ->first();
+
+            if ($acceptedInvitationRequest !== null) {
+                $relatedMemberIds[] = (int) $invitedSpouseMemberId;
+            }
+        }
+
         $sourceApplicationId = data_get($application->data, 'member.metadata.spouse_of_application_id');
         if ($sourceApplicationId !== null) {
             $sourceApplication = MembershipApplication::query()

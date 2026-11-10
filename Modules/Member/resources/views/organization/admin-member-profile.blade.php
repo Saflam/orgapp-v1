@@ -48,7 +48,9 @@
 
     <section id="personal-details" class="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 class="text-base font-bold text-slate-900">Personal Details</h3>
-        @php($details = $memberRecord->user?->details)
+        @php
+            $details = $memberRecord->user?->details;
+        @endphp
         <div class="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             @foreach([
                 'First name'=>$details?->first_name, 'Middle name'=>$details?->middle_name, 'Last name'=>$details?->last_name,
@@ -116,7 +118,9 @@
                     <div class="mt-3">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Proof</p>
                         <div class="mt-2 flex flex-wrap gap-2">
-                            @php($documentSides = ['document' => 'View proof', 'front' => 'View front', 'back' => 'View back'])
+                            @php
+                                $documentSides = ['document' => 'View proof', 'front' => 'View front', 'back' => 'View back'];
+                            @endphp
                             @foreach($documentSides as $side => $sideLabel)
                                 @if($identification->document($side))
                                     <a href="{{ route('member.profile.document', [$memberRecord->id, $identification->id, $side]) }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">{{ $sideLabel }}</a>
@@ -199,34 +203,143 @@
     </section>
 
     <section id="payments" class="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 class="text-base font-bold text-slate-900">Payments</h3>
-        <div class="mt-4 overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-200 text-left text-sm">
-                <thead><tr class="text-xs uppercase tracking-wide text-slate-500"><th class="py-3 pr-4">Payment item</th><th class="py-3 pr-4">Due date</th><th class="py-3 pr-4">Payable</th><th class="py-3 pr-4">Paid</th><th class="py-3">Status</th></tr></thead>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div><h3 class="text-base font-bold text-slate-900">Payments</h3><p class="mt-1 text-sm text-slate-500">Payment obligations, outstanding balances and collection history.</p></div>
+            @if($canManagePayments && $paymentItems->isNotEmpty())
+                <button type="button" onclick="toggleDependantForm('add-payment-obligation-form')" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">+ Add payment obligation</button>
+            @endif
+        </div>
+        @if(session('status'))<p class="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{{ session('status') }}</p>@endif
+        @if($canManagePayments && $paymentItems->isNotEmpty())
+            <div id="add-payment-obligation-form" class="mt-4 hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <h4 class="text-sm font-bold text-slate-900">Add payment obligation</h4>
+                <form method="POST" action="{{ route('member.profile.payment-obligations.store', $memberRecord->id) }}" class="mt-3 grid gap-3 sm:grid-cols-3">
+                    @csrf
+                    <div class="sm:col-span-2"><label class="mb-1 block text-sm font-medium text-slate-700">Configured payment item</label><select name="payment_item_id" required class="w-full rounded-lg border-slate-300 text-sm"><option value="">Select payment item</option>@foreach($paymentItems as $item)<option value="{{ $item->id }}">{{ $item->title }}</option>@endforeach</select></div>
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Due date</label><input type="date" name="due_at" required value="{{ now()->toDateString() }}" class="w-full rounded-lg border-slate-300 text-sm"></div>
+                    <div class="flex items-end gap-2 sm:col-span-3"><button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Create obligation</button><button type="button" onclick="toggleDependantForm('add-payment-obligation-form')" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">Cancel</button></div>
+                </form>
+            </div>
+        @endif
+        @if($canViewPayments)
+            @php
+                $paymentOutstanding = $paymentObligations->sum(fn ($row) => max(0, (float) $row->payable_amount - (float) $row->paid_amount));
+                $paymentPaid = $paymentObligations->sum(fn ($row) => (float) $row->paid_amount);
+                $paymentOverdue = $paymentObligations->filter(fn ($row) => $row->isPending() && $row->due_at && $row->due_at->lt(today()))->sum(fn ($row) => max(0, (float) $row->payable_amount - (float) $row->paid_amount));
+            @endphp
+            <div class="mt-5 grid grid-cols-3 gap-3" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+                <div class="rounded-lg bg-slate-50 p-3"><p class="text-xs uppercase text-slate-500">Total paid</p><p class="mt-1 text-lg font-bold">{{ $paymentObligations->first()?->currency ?? $organization->currency ?? '' }} {{ number_format($paymentPaid, 2) }}</p></div>
+                <div class="rounded-lg bg-amber-50 p-3"><p class="text-xs uppercase text-amber-700">Outstanding</p><p class="mt-1 text-lg font-bold text-amber-900">{{ $paymentObligations->first()?->currency ?? $organization->currency ?? '' }} {{ number_format($paymentOutstanding, 2) }}</p></div>
+                <div class="rounded-lg bg-red-50 p-3"><p class="text-xs uppercase text-red-700">Overdue</p><p class="mt-1 text-lg font-bold text-red-900">{{ $paymentObligations->first()?->currency ?? $organization->currency ?? '' }} {{ number_format($paymentOverdue, 2) }}</p></div>
+            </div>
+            <div class="mt-5 overflow-x-auto"><table class="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead><tr class="text-xs uppercase tracking-wide text-slate-500"><th class="py-3 pr-4">Payment item</th><th class="py-3 pr-4">Due date</th><th class="py-3 pr-4">Payable</th><th class="py-3 pr-4">Paid</th><th class="py-3 pr-4">Balance</th><th class="py-3 pr-4">Status</th><th class="py-3">Action</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 @forelse($paymentObligations as $obligation)
-                    <tr><td class="py-3 pr-4">{{ $obligation->item_title ?: 'Membership payment' }}</td><td class="py-3 pr-4">{{ $obligation->due_at?->format('d M Y') ?? '—' }}</td><td class="py-3 pr-4">{{ $obligation->currency }} {{ number_format((float) $obligation->payable_amount, 2) }}</td><td class="py-3 pr-4">{{ $obligation->currency }} {{ number_format((float) $obligation->paid_amount, 2) }}</td><td class="py-3">{{ is_object($obligation->status) && property_exists($obligation->status, 'value') ? ucfirst(str_replace('_', ' ', $obligation->status->value)) : ucfirst(str_replace('_', ' ', (string) $obligation->status)) }}</td></tr>
-                @empty
-                    <tr><td colspan="5" class="py-4 text-slate-500">No payment obligations recorded.</td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </div>
+                    @php
+                        $balance = max(0, (float) $obligation->payable_amount - (float) $obligation->paid_amount);
+                    @endphp
+                    <tr><td class="py-3 pr-4 font-medium">{{ $obligation->item_title }}</td><td class="py-3 pr-4">{{ $obligation->due_at?->format('d M Y') ?? '—' }}</td><td class="py-3 pr-4">{{ $obligation->currency }} {{ number_format((float) $obligation->payable_amount, 2) }}</td><td class="py-3 pr-4">{{ $obligation->currency }} {{ number_format((float) $obligation->paid_amount, 2) }}</td><td class="py-3 pr-4">{{ $obligation->currency }} {{ number_format($balance, 2) }}</td><td class="py-3 pr-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ $obligation->status->value === 'paid' ? 'bg-emerald-50 text-emerald-800' : ($obligation->status->value === 'overdue' || ($obligation->isPending() && $obligation->due_at?->lt(today())) ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800') }}">{{ ucfirst(str_replace('_', ' ', $obligation->status->value)) }}{{ $obligation->isPending() && $obligation->due_at?->lt(today()) ? ' · overdue' : '' }}</span></td>
+                    <td class="py-3">@if($canManagePayments && $obligation->isPending() && $balance > 0)
+                        <button type="button" onclick="toggleDependantForm('collect-payment-{{ $obligation->id }}')" class="rounded-lg border border-emerald-700 px-3 py-1.5 text-xs font-semibold text-emerald-800">Record payment</button>
+                    @else <span class="text-slate-400">—</span>@endif</td></tr>
+                    @if($canManagePayments && $obligation->isPending() && $balance > 0)
+                    <tr id="collect-payment-{{ $obligation->id }}" class="hidden bg-slate-50"><td colspan="7" class="p-4"><form method="POST" action="{{ route('member.profile.payments.store', $memberRecord->id) }}" class="grid gap-3 sm:grid-cols-4">@csrf<input type="hidden" name="obligation_id" value="{{ $obligation->id }}"><div><label class="mb-1 block text-xs font-medium">Amount received (max {{ number_format($balance, 2) }})</label><input type="number" name="amount" min="0.01" max="{{ $balance }}" step="0.01" required value="{{ number_format($balance, 2, '.', '') }}" class="w-full rounded-lg border-slate-300 text-sm"></div><div><label class="mb-1 block text-xs font-medium">Payment method</label><select name="payment_method" required class="w-full rounded-lg border-slate-300 text-sm"><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cheque">Cheque</option><option value="online">Online</option><option value="other">Other</option></select></div><div><label class="mb-1 block text-xs font-medium">Reference</label><input name="reference" maxlength="150" class="w-full rounded-lg border-slate-300 text-sm"></div><div><label class="mb-1 block text-xs font-medium">Payment date</label><input type="date" name="received_at" required value="{{ today()->toDateString() }}" class="w-full rounded-lg border-slate-300 text-sm"></div><div class="sm:col-span-4 flex gap-2"><button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Save payment</button><button type="button" onclick="toggleDependantForm('collect-payment-{{ $obligation->id }}')" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">Cancel</button></div></form></td></tr>
+                    @endif
+                @empty <tr><td colspan="7" class="py-4 text-slate-500">No payment obligations recorded.</td></tr>@endforelse
+                </tbody></table></div>
+        @else
+            <p class="mt-4 text-sm text-slate-500">You do not have permission to view this member's payment information.</p>
+        @endif
     </section>
 
     <section id="family" class="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h3 class="text-base font-bold text-slate-900">Family</h3>
-                <p class="mt-1 text-sm text-slate-500">Manage active dependant relationships for this member.</p>
+                <p class="mt-1 text-sm text-slate-500">Manage spouse relationships and active dependants for this member.</p>
             </div>
             @if($canEdit)
-                <button type="button" onclick="toggleDependantForm('add-dependant-form')" class="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
-                    <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4"><path d="M10 4a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 10 4Z"/></svg>
-                    Add dependant
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    @if(!$activeSpouse && !$pendingSpouseInvitation && !$pendingSpouseRequest)
+                        <button type="button" onclick="toggleDependantForm('add-spouse-form')" class="inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">+ Add spouse</button>
+                    @endif
+                    <button type="button" onclick="toggleDependantForm('add-dependant-form')" class="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">+ Add dependant</button>
+                </div>
             @endif
         </div>
+
+        @php
+            $spouseMembership = $activeSpouse
+                ? ($activeSpouse->memberships->firstWhere('status.value', 'active')
+                    ?? $activeSpouse->memberships->sortByDesc(fn ($membership) => $membership->starts_at?->timestamp ?? 0)->first())
+                : null;
+            $spouseMembershipStatus = $spouseMembership?->status instanceof \BackedEnum
+                ? $spouseMembership->status->value
+                : (string) ($spouseMembership?->status ?? 'no_membership');
+        @endphp
+
+        @if($activeSpouse)
+            <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Spouse</p>
+                    <p class="mt-1 font-semibold text-slate-900">{{ $activeSpouse->user?->name ?? trim(($activeSpouse->first_name ?? '').' '.($activeSpouse->last_name ?? '')) }}</p>
+                    <p class="text-sm text-slate-600">{{ $activeSpouse->membership_number ?: 'Member' }}</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">Relationship active</span>
+                    <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                        Membership: {{ ucfirst(str_replace('_', ' ', $spouseMembershipStatus)) }}
+                    </span>
+                    <a href="{{ route('member.profile', $activeSpouse->id) }}" class="inline-flex items-center rounded-lg border border-emerald-700 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
+                        View profile
+                    </a>
+                </div>
+            </div>
+        @endif
+
+        @if(!$activeSpouse && $pendingSpouseInvitation)
+            <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Spouse invitation sent to <strong>{{ $pendingSpouseInvitation->email }}</strong>. Expires {{ $pendingSpouseInvitation->expires_at?->format('d M Y') }}.</div>
+        @endif
+
+        @if(!$activeSpouse && !$pendingSpouseInvitation && $pendingSpouseRequest)
+            <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Spouse request sent to <strong>{{ $pendingSpouseRequest->application?->user?->name ?? $pendingSpouseRequest->targetMember?->user?->name ?? 'another member' }}</strong>. Waiting for acceptance.</div>
+        @endif
+
+        @if($canEdit && !$activeSpouse && !$pendingSpouseInvitation && !$pendingSpouseRequest)
+            <div id="add-spouse-form" class="mt-5 hidden rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                <h4 class="text-sm font-bold text-slate-900">Add spouse</h4>
+                <p class="mt-1 text-sm text-slate-600">Link an existing organization member or invite a new spouse to complete their own application.</p>
+                <div class="mt-4 grid gap-4 lg:grid-cols-2">
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <h5 class="font-semibold text-slate-900">Link existing member</h5>
+                        <form method="POST" action="{{ route('member.profile.spouses.request-existing', $memberRecord->id) }}" class="mt-3 space-y-3">
+                            @csrf
+                            <label class="block text-sm font-medium text-slate-700" for="existing-spouse-member">Organization member</label>
+                            <select id="existing-spouse-member" name="related_member_id" required class="w-full rounded-lg border-slate-300 text-sm">
+                                <option value="">Select an eligible member</option>
+                                @foreach($eligibleSpouseMembers as $candidate)
+                                    <option value="{{ $candidate->id }}">{{ $candidate->user?->name }}{{ $candidate->membership_number ? ' — '.$candidate->membership_number : '' }}</option>
+                                @endforeach
+                            </select>
+                            <p class="text-xs text-slate-500">The selected member must accept the request before the relationship becomes active.</p>
+                            <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Send spouse request</button>
+                        </form>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-4">
+                        <h5 class="font-semibold text-slate-900">Invite a new spouse</h5>
+                        <form method="POST" action="{{ route('member.profile.spouses.invite', $memberRecord->id) }}" class="mt-3 space-y-3">
+                            @csrf
+                            <div><label class="mb-1 block text-sm font-medium text-slate-700">Spouse name *</label><input name="invitee_name" required maxlength="255" class="w-full rounded-lg border-slate-300 text-sm"></div>
+                            <div><label class="mb-1 block text-sm font-medium text-slate-700">Email address *</label><input type="email" name="email" required maxlength="255" class="w-full rounded-lg border-slate-300 text-sm"></div>
+                            <p class="text-xs text-slate-500">We’ll send a secure invitation. The spouse signs in with this email and completes their own application.</p>
+                            <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Send invitation</button>
+                        </form>
+                    </div>
+                </div>
+                <button type="button" onclick="toggleDependantForm('add-spouse-form')" class="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Close</button>
+            </div>
+        @endif
 
         @if($canEdit)
             <div id="add-dependant-form" class="mt-5 hidden rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
@@ -239,14 +352,16 @@
                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Last name</label><input name="last_name" maxlength="255" class="w-full rounded-lg border-slate-300 text-sm" value="{{ old('last_name') }}"></div>
                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Date of birth</label><input type="date" name="date_of_birth" max="{{ now()->toDateString() }}" class="w-full rounded-lg border-slate-300 text-sm" value="{{ old('date_of_birth') }}"></div>
                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Gender</label><select name="gender" class="w-full rounded-lg border-slate-300 text-sm"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></div>
-                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Relationship *</label><select name="relationship_type" required class="w-full rounded-lg border-slate-300 text-sm"><option value="">Select relationship</option><option value="spouse">Spouse</option><option value="child">Child</option><option value="parent">Parent</option><option value="sibling">Sibling</option><option value="guardian">Guardian</option><option value="other">Other</option></select></div>
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Relationship *</label><select name="relationship_type" required class="w-full rounded-lg border-slate-300 text-sm"><option value="">Select relationship</option><option value="child">Child</option><option value="parent">Parent</option><option value="sibling">Sibling</option><option value="guardian">Guardian</option><option value="other">Other</option></select></div>
                     <div class="flex items-end gap-2 sm:col-span-2 lg:col-span-2"><button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Save dependant</button><button type="button" onclick="toggleDependantForm('add-dependant-form')" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button></div>
                 </form>
             </div>
         @endif
 
-        @if($errors->has('family') || $errors->has('relationship_type'))
-            <div class="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ $errors->first('family') ?: $errors->first('relationship_type') }}</div>
+        @if($errors->has('family') || $errors->has('relationship_type') || $errors->has('email') || $errors->has('invitee_name') || $errors->has('related_member_id'))
+            <div class="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {{ $errors->first('family') ?: $errors->first('relationship_type') ?: $errors->first('email') ?: $errors->first('invitee_name') ?: $errors->first('related_member_id') }}
+            </div>
         @endif
 
         <div class="mt-4 overflow-x-auto">
@@ -299,7 +414,7 @@
                                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Last name</label><input name="last_name" maxlength="255" value="{{ $dependant->last_name }}" class="w-full rounded-lg border-slate-300 text-sm"></div>
                                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Date of birth</label><input type="date" name="date_of_birth" max="{{ now()->toDateString() }}" value="{{ $dependant->date_of_birth?->format('Y-m-d') }}" class="w-full rounded-lg border-slate-300 text-sm"></div>
                                     <div><label class="mb-1 block text-sm font-medium text-slate-700">Gender</label><select name="gender" class="w-full rounded-lg border-slate-300 text-sm"><option value="">Select gender</option><option value="female" @selected($dependant->gender === 'female')>Female</option><option value="male" @selected($dependant->gender === 'male')>Male</option><option value="other" @selected($dependant->gender === 'other')>Other</option></select></div>
-                                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Relationship *</label><select name="relationship_type" required class="w-full rounded-lg border-slate-300 text-sm">@foreach(['spouse'=>'Spouse','child'=>'Child','parent'=>'Parent','sibling'=>'Sibling','guardian'=>'Guardian','other'=>'Other'] as $value=>$label)<option value="{{ $value }}" @selected($dependant->pivot?->relationship_type === $value)>{{ $label }}</option>@endforeach</select></div>
+                                    <div><label class="mb-1 block text-sm font-medium text-slate-700">Relationship *</label><select name="relationship_type" required class="w-full rounded-lg border-slate-300 text-sm">@foreach(['child'=>'Child','parent'=>'Parent','sibling'=>'Sibling','guardian'=>'Guardian','other'=>'Other'] as $value=>$label)<option value="{{ $value }}" @selected($dependant->pivot?->relationship_type === $value)>{{ $label }}</option>@endforeach</select></div>
                                     <div class="flex items-end gap-2 sm:col-span-2 lg:col-span-2"><button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Save changes</button><button type="button" onclick="toggleDependantForm('edit-dependant-{{ $dependant->id }}')" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button></div>
                                 </form>
                             </td>
@@ -318,6 +433,9 @@
             const form = document.getElementById(id);
             if (form) form.classList.toggle('hidden');
         }
+        @if($errors->has('email') || $errors->has('invitee_name') || $errors->has('related_member_id'))
+            document.getElementById('add-spouse-form')?.classList.remove('hidden');
+        @endif
     </script>
 
     <section id="membership-application" class="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

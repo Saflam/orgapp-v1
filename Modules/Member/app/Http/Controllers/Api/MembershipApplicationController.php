@@ -190,16 +190,51 @@ class MembershipApplicationController
     {
         $organization = $this->organization();
         $validated = $request->validated();
-        $sourceApplication = MembershipApplication::query()
-            ->whereKey((int) ($validated['source_application_id'] ?? 0))
-            ->where('organization_id', $organization->id)
-            ->where('user_id', $request->user()->id)
-            ->first();
+        $invitation = null;
 
-        if ($sourceApplication === null || $sourceApplication->submitted_at === null) {
-            throw ValidationException::withMessages([
-                'source_application_id' => 'The original application could not be verified. Please start from your submitted application.',
-            ]);
+        if (! empty($validated['invitation_token'])) {
+            $invitation = \Modules\Member\Models\SpouseMembershipInvitation::query()
+                ->where('organization_id', $organization->id)
+                ->where('token_hash', hash('sha256', $validated['invitation_token']))
+                ->where('status', 'pending')
+                ->where('expires_at', '>', now())
+                ->where('invited_user_id', $request->user()->id)
+                ->with('inviterMember.user')
+                ->first();
+
+            if (! $invitation || mb_strtolower((string) $request->user()->email) !== mb_strtolower($invitation->email)) {
+                throw ValidationException::withMessages([
+                    'invitation_token' => 'This spouse invitation is invalid, expired, or belongs to another account.',
+                ]);
+            }
+            if (isset($validated['email']) && mb_strtolower((string) $validated['email']) !== mb_strtolower($invitation->email)) {
+                throw ValidationException::withMessages([
+                    'email' => 'Use the email address to which this spouse invitation was sent.',
+                ]);
+            }
+
+            if (\Modules\Member\Models\Member::query()
+                ->where('organization_id', $organization->id)
+                ->where('user_id', $request->user()->id)
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'invitation_token' => 'Your account is already a member of this organization.',
+                ]);
+            }
+
+            $sourceApplication = null;
+        } else {
+            $sourceApplication = MembershipApplication::query()
+                ->whereKey((int) ($validated['source_application_id'] ?? 0))
+                ->where('organization_id', $organization->id)
+                ->where('user_id', $request->user()->id)
+                ->first();
+
+            if ($sourceApplication === null || $sourceApplication->submitted_at === null) {
+                throw ValidationException::withMessages([
+                    'source_application_id' => 'The original application could not be verified. Please start from your submitted application.',
+                ]);
+            }
         }
 
         $name = trim(implode(' ', array_filter([
@@ -207,39 +242,45 @@ class MembershipApplicationController
             $validated['middle_name'] ?? null,
             $validated['last_name'] ?? null,
         ])));
-
-        // Keep the UploadedFile instance before entering the transaction. The spouse
-        // flow does not save a separate draft first, so media must be consumed from
-        // this request while PHP's upload temporary file is still available.
         $profilePhoto = $request->file('profile_photo');
 
-        $application = \Illuminate\Support\Facades\DB::transaction(function () use ($request, $validated, $organization, $name, $sourceApplication): MembershipApplication {
+        $application = \Illuminate\Support\Facades\DB::transaction(function () use ($request, $validated, $organization, $name, $sourceApplication, $invitation): MembershipApplication {
             $phone = null;
             if (! empty($validated['primary_phone'])) {
                 $normalized = app(\App\Support\PhoneNumbers\PhoneNumberNormalizer::class)->normalize(
                     (string) $validated['primary_phone'],
                     $validated['primary_phone_country_iso2'] ?? null,
                 );
-                if (\App\Models\User::query()->where('phone', $normalized['phone_e164'])->exists()) {
-                    throw ValidationException::withMessages(['primary_phone' => 'This phone number is already linked to an account.']);
+                $phoneQuery = \App\Models\User::query()->where('phone', $normalized['phone_e164']);
+                if ($invitation) {
+                    $phoneQuery->whereKeyNot($request->user()->id);
+                }
+                if ($phoneQuery->exists()) {
+                    throw ValidationException::withMessages(['primary_phone' => 'This phone number is already linked to another account.']);
                 }
                 $phone = $normalized['phone_e164'];
             }
 
-            $user = \App\Models\User::query()->create([
-                'name' => $name,
-                'email' => $validated['email'],
-                'phone' => $phone,
-                'password' => null,
-            ]);
+            if ($invitation) {
+                $user = $request->user();
+                $user->forceFill(['name' => $name, 'phone' => $phone ?? $user->phone])->save();
+            } else {
+                $user = \App\Models\User::query()->create([
+                    'name' => $name,
+                    'email' => $validated['email'],
+                    'phone' => $phone,
+                    'password' => null,
+                ]);
+            }
 
-            \App\Models\OrganizationMembership::query()->create([
-                'organization_id' => $organization->id,
-                'user_id' => $user->id,
-                'status' => 'pending',
-                'joined_at' => now(),
-                'metadata' => ['source' => 'spouse_membership_application'],
-            ]);
+            \App\Models\OrganizationMembership::query()->firstOrCreate(
+                ['organization_id' => $organization->id, 'user_id' => $user->id],
+                [
+                    'status' => 'pending',
+                    'joined_at' => now(),
+                    'metadata' => ['source' => 'spouse_membership_application'],
+                ],
+            );
 
             $application = $this->applicationService->startOrResume(
                 organization: $organization,
@@ -253,6 +294,13 @@ class MembershipApplicationController
                 documents: $validated['identification_documents'] ?? [],
                 expiryDates: $validated['identification_expiry_dates'] ?? [],
             );
+
+            $memberMetadata = $invitation
+                ? [
+                    'spouse_of_member_id' => $invitation->inviter_member_id,
+                    'spouse_invitation_id' => $invitation->id,
+                ]
+                : ['spouse_of_application_id' => $sourceApplication->id];
 
             $application = $this->applicationService->submit(
                 organization: $organization,
@@ -278,7 +326,7 @@ class MembershipApplicationController
                         'phone_numbers' => $validated['phone_numbers'] ?? [],
                         'emergency_contacts' => $validated['emergency_contacts'] ?? [],
                         'unit_id' => null,
-                        'metadata' => ['spouse_of_application_id' => $sourceApplication->id],
+                        'metadata' => $memberMetadata,
                     ],
                     'address' => $validated['addresses'][0] ?? [],
                     'addresses' => $validated['addresses'] ?? [],
@@ -298,11 +346,27 @@ class MembershipApplicationController
             return $application;
         });
 
-        // Use the UploadedFile captured at the start of the request instead of
-        // asking Media Library to resolve it from the request again inside the
-        // transaction. This avoids the spouse-flow temporary-file lookup failure.
         if ($profilePhoto !== null && $profilePhoto->isValid()) {
             $application->addMedia($profilePhoto)->toMediaCollection('profile-photo');
+        }
+
+        if ($invitation) {
+            $invitation->update([
+                'status' => 'application_submitted',
+                'accepted_at' => now(),
+                'membership_application_id' => $application->id,
+            ]);
+
+            $spouseRequest = \Modules\Member\Models\SpouseRelationshipRequest::query()->create([
+                'organization_id' => $organization->id,
+                'requester_application_id' => $application->id,
+                'requester_member_id' => null,
+                'target_member_id' => $invitation->inviter_member_id,
+                'status' => 'pending',
+                'metadata' => ['source' => 'admin_spouse_invitation', 'invitation_id' => $invitation->id],
+            ]);
+
+            $invitation->inviterMember?->user?->notify(new \Modules\Member\Notifications\SpouseRelationshipRequested($spouseRequest));
         }
 
         return response()->json(new MembershipApplicationResource($application), 201);

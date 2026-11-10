@@ -20,7 +20,15 @@ class FinanceJournalService
         array $data,
     ): FinanceJournal {
         $this->assertScopeBelongsToOrganization($organization, $scope);
+        if (! $scope->isOrganizationScope()) {
+            throw new \InvalidArgumentException('Finance journals must use the organization-wide ledger.');
+        }
         $this->assertPeriodBelongsToScope($period, $scope, $organization);
+
+        $unitId = $data['unit_id'] ?? null;
+        if ($unitId !== null && ! $organization->units()->whereKey($unitId)->exists()) {
+            throw new \InvalidArgumentException('The journal unit does not belong to the organization.');
+        }
         app(FinancePeriodService::class)->assertOpen($period);
 
         $transactionDate = $data['transaction_date'];
@@ -65,11 +73,13 @@ class FinanceJournalService
             $data,
             $transactionDate,
             $preparedLines,
+            $unitId,
         ): FinanceJournal {
             $journal = FinanceJournal::create([
                 'organization_id' => $organization->id,
                 'finance_scope_id' => $scope->id,
                 'finance_period_id' => $period->id,
+                'unit_id' => $unitId,
                 'journal_number' => $data['journal_number'] ?? $this->generateJournalNumber(),
                 'transaction_date' => $transactionDate,
                 'description' => $data['description'] ?? null,
@@ -229,9 +239,7 @@ class FinanceJournalService
     ): void {
         $periodScope = $period->scope;
 
-        // A period must belong to the same organization and be organization-wide.
-        // Journal ledger scope remains independent, so unit-collected transactions
-        // can post to their unit ledger while using the organization's period.
+        // Both journal ledger and period are organization-wide.
         if ($period->organization_id !== $organization->id
             || ! $periodScope
             || $periodScope->organization_id !== $organization->id
