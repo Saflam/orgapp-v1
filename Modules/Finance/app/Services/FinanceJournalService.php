@@ -239,14 +239,15 @@ class FinanceJournalService
     ): void {
         $periodScope = $period->scope;
 
-        // Both journal ledger and period are organization-wide.
+        // Both journal ledger and period are organization-wide and must use the same scope.
         if ($period->organization_id !== $organization->id
+            || $period->finance_scope_id !== $scope->id
             || ! $periodScope
             || $periodScope->organization_id !== $organization->id
             || ! $periodScope->isOrganizationScope()
             || $scope->organization_id !== $organization->id) {
             throw new \InvalidArgumentException(
-                'The financial period must be an organization-level period for the same organization.'
+                'The financial period must be an organization-level period for the same organization and finance scope.'
             );
         }
     }
