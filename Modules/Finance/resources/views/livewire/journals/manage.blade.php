@@ -165,7 +165,7 @@
                         <th>Total debit</th>
                         <th>Total credit</th>
                         <th>Status</th>
-                        @if ($canReverse)<th>Action</th>@endif
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -187,27 +187,43 @@
                             <td>{{ number_format((float) $journal->lines->sum('debit'), 4) }}</td>
                             <td>{{ number_format((float) $journal->lines->sum('credit'), 4) }}</td>
                             <td><span class="pill ok">{{ ucfirst($journal->status->value) }}</span></td>
-                            @if ($canReverse)
-                                <td>
-                                    @if ($journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal)
-                                        <button class="btn secondary" type="button" wire:click="prepareReversal({{ $journal->id }})">Reverse</button>
-                                    @else
-                                        <span class="muted">—</span>
-                                    @endif
-                                </td>
-                            @endif
+                            <td class="journal-actions">
+                                <a class="journal-icon-btn" href="{{ route('finance.journals.show', $journal->id) }}"
+                                   title="View journal" aria-label="View journal {{ $journal->journal_number }}">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"></path>
+                                        <circle cx="12" cy="12" r="2.7"></circle>
+                                    </svg>
+                                </a>
+                                @if ($canReverse && $journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal)
+                                    <button class="journal-icon-btn" type="button"
+                                            wire:click="prepareReversal({{ $journal->id }})"
+                                            title="Reverse journal" aria-label="Reverse journal {{ $journal->journal_number }}">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M4 7h12a4 4 0 0 1 0 8h-1"></path>
+                                            <path d="m8 3-4 4 4 4"></path>
+                                            <path d="M20 17H8a4 4 0 0 1 0-8h1"></path>
+                                            <path d="m16 21 4-4-4-4"></path>
+                                        </svg>
+                                    </button>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="{{ $canReverse ? 10 : 9 }}" class="empty">No journal entries match the selected filters.</td></tr>
+                        <tr><td colspan="10" class="empty">No journal entries match the selected filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
-        <p class="muted">Showing up to 100 matching journal entries, newest first.</p>
+        <div class="journal-pagination">
+            {{ $journalEntries->links() }}
+        </div>
     </section>
 
     @if ($reversalJournalId)
-        <section class="card" aria-labelledby="reverse-journal-heading">
+        <div class="journal-modal-backdrop" role="presentation">
+            <section class="journal-modal" role="dialog" aria-modal="true" aria-labelledby="reverse-journal-heading" wire:key="journal-reversal-modal">
+
             <h2 id="reverse-journal-heading">Reverse journal</h2>
             <p class="muted">A new posted journal will be created with the original debit and credit amounts swapped. The original journal will remain unchanged.</p>
             <form wire:submit="reverseJournal">
@@ -238,7 +254,8 @@
                     <button class="btn secondary" type="button" wire:click="cancelReversal">Cancel</button>
                 </div>
             </form>
-        </section>
+            </section>
+        </div>
     @endif
 </div>
 
@@ -331,6 +348,101 @@
     .finance-journal-management .actions {
         margin-top: 10px;
         gap: 8px;
+    }
+
+    .finance-journal-management .journal-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+
+    .finance-journal-management .journal-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        padding: 0;
+        border: 1px solid var(--border-color, #d1d5db);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .finance-journal-management .journal-icon-btn:hover {
+        background: var(--surface-muted, #f3f4f6);
+    }
+
+    .finance-journal-management .journal-icon-btn:focus-visible {
+        outline: 2px solid var(--primary, #2563eb);
+        outline-offset: 2px;
+    }
+
+    .finance-journal-management .journal-icon-btn svg {
+        width: 17px;
+        height: 17px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .finance-journal-management .journal-pagination {
+        margin-top: 14px;
+    }
+
+    .finance-journal-management .journal-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        overflow-y: auto;
+        background: rgba(15, 23, 42, .58);
+    }
+
+    .finance-journal-management .journal-modal {
+        width: min(620px, 100%);
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+        padding: 22px;
+        border-radius: 12px;
+        background: var(--card-background, #fff);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+    }
+
+    .finance-journal-management .journal-modal-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+    }
+
+    .finance-journal-management .journal-modal h2 {
+        margin-top: 0;
+    }
+
+    .finance-journal-management .journal-modal-close {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font-size: 25px;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .finance-journal-management .journal-modal-close:hover {
+        background: var(--surface-muted, #f3f4f6);
     }
 
     @media (max-width: 1100px) {

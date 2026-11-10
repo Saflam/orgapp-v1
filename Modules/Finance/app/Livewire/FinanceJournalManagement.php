@@ -6,6 +6,7 @@ use App\Support\Organization\CurrentOrganization;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Livewire\Component;
+use Livewire\WithPagination;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\AuthorizationService;
@@ -19,6 +20,7 @@ use InvalidArgumentException;
 
 class FinanceJournalManagement extends Component
 {
+    use WithPagination;
     public Organization $organization;
 
     public string $transactionDate = '';
@@ -54,6 +56,31 @@ class FinanceJournalManagement extends Component
         $this->transactionDate = now()->toDateString();
         $this->resetEntryForm();
         $this->ensureCanView($authorization);
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterPeriodId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFilterUnitId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedFromDate(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedToDate(): void
+    {
+        $this->resetPage();
     }
 
     public function addLine(): void
@@ -300,7 +327,7 @@ class FinanceJournalManagement extends Component
             $query->whereDate('transaction_date', '<=', $this->toDate);
         }
 
-        $journalEntries = $query->limit(100)->get();
+        $journalEntries = $query->paginate(15);
 
         return view('finance::livewire.journals.manage', [
             'accounts' => $accounts,
