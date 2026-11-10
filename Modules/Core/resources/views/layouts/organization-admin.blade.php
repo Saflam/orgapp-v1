@@ -57,6 +57,9 @@
         $canViewFinanceIncomeStatement = $financeModuleEnabled
             && \Illuminate\Support\Facades\Route::has('finance.reports.income-statement')
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
+        $canViewFinanceBalanceSheet = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.reports.balance-sheet')
+            && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -236,7 +239,7 @@
                         </div>
                     </details>
                 @endif
-                @if ($canViewFinanceTrialBalance || $canViewFinanceIncomeStatement)
+                @if ($canViewFinanceTrialBalance || $canViewFinanceIncomeStatement || $canViewFinanceBalanceSheet)
                     @php($reportsNavActive = request()->routeIs('finance.reports.*'))
                     <details class="nav-group" {{ $reportsNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $reportsNavActive ? 'active' : '' }}">
@@ -251,6 +254,11 @@
                             @if ($canViewFinanceIncomeStatement)
                                 <a class="nav-link {{ request()->routeIs('finance.reports.income-statement') ? 'active' : '' }}" href="{{ route('finance.reports.income-statement') }}">
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Income Statement</span>
+                                </a>
+                            @endif
+                            @if ($canViewFinanceBalanceSheet)
+                                <a class="nav-link {{ request()->routeIs('finance.reports.balance-sheet') ? 'active' : '' }}" href="{{ route('finance.reports.balance-sheet') }}">
+                                    <span class="nav-icon" aria-hidden="true">▦</span><span>Balance Sheet</span>
                                 </a>
                             @endif
                         </div>

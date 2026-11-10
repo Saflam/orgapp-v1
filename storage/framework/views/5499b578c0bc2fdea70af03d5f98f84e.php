@@ -57,6 +57,9 @@
         $canViewFinanceIncomeStatement = $financeModuleEnabled
             && \Illuminate\Support\Facades\Route::has('finance.reports.income-statement')
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
+        $canViewFinanceBalanceSheet = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.reports.balance-sheet')
+            && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -237,7 +240,7 @@
                         </div>
                     </details>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceTrialBalance || $canViewFinanceIncomeStatement): ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceTrialBalance || $canViewFinanceIncomeStatement || $canViewFinanceBalanceSheet): ?>
                     <?php ($reportsNavActive = request()->routeIs('finance.reports.*')); ?>
                     <details class="nav-group" <?php echo e($reportsNavActive ? 'open' : ''); ?>>
                         <summary class="nav-group-toggle <?php echo e($reportsNavActive ? 'active' : ''); ?>">
@@ -252,6 +255,11 @@
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceIncomeStatement): ?>
                                 <a class="nav-link <?php echo e(request()->routeIs('finance.reports.income-statement') ? 'active' : ''); ?>" href="<?php echo e(route('finance.reports.income-statement')); ?>">
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Income Statement</span>
+                                </a>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceBalanceSheet): ?>
+                                <a class="nav-link <?php echo e(request()->routeIs('finance.reports.balance-sheet') ? 'active' : ''); ?>" href="<?php echo e(route('finance.reports.balance-sheet')); ?>">
+                                    <span class="nav-icon" aria-hidden="true">▦</span><span>Balance Sheet</span>
                                 </a>
                             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
