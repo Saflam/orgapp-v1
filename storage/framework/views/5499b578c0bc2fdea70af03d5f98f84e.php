@@ -23,6 +23,7 @@
     $canViewFinanceAccounts = false;
     $canViewFinanceTaxes = false;
     $canViewFinanceJournals = false;
+    $canViewFinanceTrialBalance = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -49,6 +50,9 @@
                 $membershipAuthorization->can($layoutUser, 'finance.journal.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'finance.journal.post', $membershipOrganizationContext)
             );
+        $canViewFinanceTrialBalance = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.reports.trial-balance')
+            && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -197,9 +201,9 @@
                         </div>
                     </details>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals): ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceTrialBalance): ?>
                     <?php ($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes')); ?>
-                    <?php ($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals')); ?>
+                    <?php ($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals', 'finance.reports.trial-balance')); ?>
                     <details class="nav-group" <?php echo e($financeNavActive ? 'open' : ''); ?>>
                         <summary class="nav-group-toggle <?php echo e($financeNavActive ? 'active' : ''); ?>">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -224,6 +228,11 @@
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceJournals): ?>
                                 <a class="nav-link <?php echo e(request()->routeIs('finance.journals') ? 'active' : ''); ?>" href="<?php echo e(route('finance.journals')); ?>">
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>
+                                </a>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceTrialBalance): ?>
+                                <a class="nav-link <?php echo e(request()->routeIs('finance.reports.trial-balance') ? 'active' : ''); ?>" href="<?php echo e(route('finance.reports.trial-balance')); ?>">
+                                    <span class="nav-icon" aria-hidden="true">▦</span><span>Trial Balance</span>
                                 </a>
                             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>

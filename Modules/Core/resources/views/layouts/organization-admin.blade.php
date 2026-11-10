@@ -23,6 +23,7 @@
     $canViewFinanceAccounts = false;
     $canViewFinanceTaxes = false;
     $canViewFinanceJournals = false;
+    $canViewFinanceTrialBalance = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -49,6 +50,9 @@
                 $membershipAuthorization->can($layoutUser, 'finance.journal.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'finance.journal.post', $membershipOrganizationContext)
             );
+        $canViewFinanceTrialBalance = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.reports.trial-balance')
+            && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -196,9 +200,9 @@
                         </div>
                     </details>
                 @endif
-                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals)
+                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceTrialBalance)
                     @php($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
-                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals'))
+                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals', 'finance.reports.trial-balance'))
                     <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -223,6 +227,11 @@
                             @if ($canViewFinanceJournals)
                                 <a class="nav-link {{ request()->routeIs('finance.journals') ? 'active' : '' }}" href="{{ route('finance.journals') }}">
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>
+                                </a>
+                            @endif
+                            @if ($canViewFinanceTrialBalance)
+                                <a class="nav-link {{ request()->routeIs('finance.reports.trial-balance') ? 'active' : '' }}" href="{{ route('finance.reports.trial-balance') }}">
+                                    <span class="nav-icon" aria-hidden="true">▦</span><span>Trial Balance</span>
                                 </a>
                             @endif
                         </div>

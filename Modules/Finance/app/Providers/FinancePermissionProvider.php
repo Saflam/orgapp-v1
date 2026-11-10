@@ -13,6 +13,7 @@ class FinancePermissionProvider implements PermissionProvider
             ['module' => 'finance', 'name' => 'Manage Financial Periods', 'code' => 'finance.period.manage', 'description' => 'Create, edit, and close organization-wide financial periods.'],
             ['module' => 'finance', 'name' => 'View Chart of Accounts', 'code' => 'finance.account.view', 'description' => 'View the organization-wide chart of accounts.'],
             ['module' => 'finance', 'name' => 'Manage Chart of Accounts', 'code' => 'finance.account.manage', 'description' => 'Create, edit, and deactivate manually managed organization-wide accounts.'],
+            ['module' => 'finance', 'name' => 'View Trial Balance', 'code' => 'finance.report.view', 'description' => 'View the cumulative organization-wide trial balance report.'],
             ['module' => 'finance', 'name' => 'View Journal Entries', 'code' => 'finance.journal.view', 'description' => 'View the organization-wide journal register and journal entries.'],
             ['module' => 'finance', 'name' => 'Post Journal Entries', 'code' => 'finance.journal.post', 'description' => 'Create and post manual organization-wide journal entries.'],
             ['module' => 'finance', 'name' => 'Reverse Journal Entries', 'code' => 'finance.journal.reverse', 'description' => 'Create a posted reversing journal for an existing posted journal.'],
