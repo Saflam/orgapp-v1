@@ -10,6 +10,7 @@ use Modules\Finance\Enums\FinanceScopeType;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournalLine;
 use Modules\Finance\Models\FinanceScope;
+use Modules\Finance\Models\FinanceTaxRate;
 
 class FinanceChartOfAccountsService
 {
@@ -88,6 +89,15 @@ class FinanceChartOfAccountsService
         }
         if (FinanceJournalLine::query()->where('finance_account_id', $account->id)->exists()) {
             throw new InvalidArgumentException('An account used by a journal cannot be deactivated.');
+        }
+        if (FinanceTaxRate::query()
+            ->where('is_active', true)
+            ->where(function ($query) use ($account): void {
+                $query->where('sales_account_id', $account->id)
+                    ->orWhere('purchase_account_id', $account->id);
+            })
+            ->exists()) {
+            throw new InvalidArgumentException('An account mapped to an active tax rate cannot be deactivated.');
         }
 
         $account->update(['is_active' => false]);
