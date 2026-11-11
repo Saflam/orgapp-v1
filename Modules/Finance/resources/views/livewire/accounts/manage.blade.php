@@ -50,6 +50,25 @@
                         </select>
                         @error('parentId') <span class="error">{{ $message }}</span> @enderror
                     </div>
+                    <div class="field">
+                        <label>
+                            <input type="checkbox" wire:model.live="isCashAccount" @disabled($accountType !== 'asset')>
+                            Cash / bank account
+                        </label>
+                        <small class="muted">Select this for cash-on-hand, petty cash, or bank accounts. Only Asset accounts can be marked as cash / bank.</small>
+                        @error('isCashAccount') <span class="error">{{ $message }}</span> @enderror
+                    </div>
+                    <div class="field">
+                        <label for="cash-flow-category">Cash flow category</label>
+                        <select id="cash-flow-category" wire:model="cashFlowCategory" @disabled($isCashAccount)>
+                            <option value="">Not classified</option>
+                            <option value="operating">Operating</option>
+                            <option value="investing">Investing</option>
+                            <option value="financing">Financing</option>
+                        </select>
+                        <small class="muted">Classifies non-cash accounts used as the counterpart in cash-flow transactions. Leave blank if not applicable.</small>
+                        @error('cashFlowCategory') <span class="error">{{ $message }}</span> @enderror
+                    </div>
                 </div>
                 <div class="actions">
                     <button class="btn" type="submit" wire:loading.attr="disabled" wire:target="save">{{ $editingId ? 'Save Changes' : 'Create Account' }}</button>
@@ -64,7 +83,7 @@
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr><th>Code</th><th>Account</th><th>Type</th><th>Parent</th><th>Normal balance</th><th>Source</th><th>Status</th>@if ($canManage)<th>Actions</th>@endif</tr>
+                    <tr><th>Code</th><th>Account</th><th>Type</th><th>Parent</th><th>Normal balance</th><th>Cash flow</th><th>Source</th><th>Status</th>@if ($canManage)<th>Actions</th>@endif</tr>
                 </thead>
                 <tbody>
                     @forelse ($accounts as $account)
@@ -74,6 +93,15 @@
                             <td>{{ ucfirst($account->account_type->value) }}</td>
                             <td>{{ $account->parent ? $account->parent->code.' — '.$account->parent->name : '—' }}</td>
                             <td>{{ ucfirst($account->normal_balance->value) }}</td>
+                            <td>
+                                @if ($account->is_cash_account)
+                                    Cash / Bank
+                                @elseif ($account->cash_flow_category)
+                                    {{ ucfirst($account->cash_flow_category) }}
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td>{{ $account->is_system_managed ? ($account->source_type ?: 'System') : 'Manual' }}</td>
                             <td><span class="pill {{ $account->is_active ? 'ok' : 'off' }}">{{ $account->is_active ? 'Active' : 'Inactive' }}</span></td>
                             @if ($canManage)
@@ -90,7 +118,7 @@
                             @endif
                         </tr>
                     @empty
-                        <tr><td colspan="{{ $canManage ? 8 : 7 }}" class="empty">No accounts have been configured yet.</td></tr>
+                        <tr><td colspan="{{ $canManage ? 9 : 8 }}" class="empty">No accounts have been configured yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -24,7 +24,11 @@ class FinanceChartOfAccountsManagement extends Component
     public string $name = '';
     public string $accountType = 'asset';
     public ?int $parentId = null;
+    public bool $isCashAccount = false;
+    public string $cashFlowCategory = '';
     public string $successMessage = '';
+
+    private const CASH_FLOW_CATEGORIES = ['operating', 'investing', 'financing'];
 
     public function mount(CurrentOrganization $currentOrganization, AuthorizationService $authorization): void
     {
@@ -36,6 +40,16 @@ class FinanceChartOfAccountsManagement extends Component
     public function updatedAccountType(): void
     {
         $this->parentId = null;
+        if ($this->accountType !== FinanceAccountType::ASSET->value) {
+            $this->isCashAccount = false;
+        }
+    }
+
+    public function updatedIsCashAccount(): void
+    {
+        if ($this->isCashAccount) {
+            $this->cashFlowCategory = '';
+        }
     }
 
     public function edit(int $accountId, AuthorizationService $authorization): void
@@ -53,6 +67,8 @@ class FinanceChartOfAccountsManagement extends Component
         $this->name = $account->name;
         $this->accountType = $account->account_type->value;
         $this->parentId = $account->parent_id;
+        $this->isCashAccount = (bool) $account->is_cash_account;
+        $this->cashFlowCategory = $account->cash_flow_category ?? '';
         $this->resetValidation();
     }
 
@@ -65,6 +81,8 @@ class FinanceChartOfAccountsManagement extends Component
             'name' => ['required', 'string', 'max:255'],
             'accountType' => ['required', Rule::in(array_column(FinanceAccountType::cases(), 'value'))],
             'parentId' => ['nullable', 'integer'],
+            'isCashAccount' => ['required', 'boolean'],
+            'cashFlowCategory' => ['nullable', 'string', Rule::in(array_merge([''], self::CASH_FLOW_CATEGORIES))],
         ]);
 
         $scope = $scopes->organizationScope($this->organization);
@@ -73,6 +91,8 @@ class FinanceChartOfAccountsManagement extends Component
             'name' => $validated['name'],
             'account_type' => $validated['accountType'],
             'parent_id' => $validated['parentId'],
+            'is_cash_account' => $validated['isCashAccount'],
+            'cash_flow_category' => $validated['cashFlowCategory'] === '' ? null : $validated['cashFlowCategory'],
         ];
 
         try {
@@ -117,6 +137,8 @@ class FinanceChartOfAccountsManagement extends Component
         $this->name = '';
         $this->accountType = 'asset';
         $this->parentId = null;
+        $this->isCashAccount = false;
+        $this->cashFlowCategory = '';
         $this->resetValidation();
     }
 
@@ -129,7 +151,7 @@ class FinanceChartOfAccountsManagement extends Component
             ->where('finance_scope_id', $scope->id)
             ->with('parent')
             ->withCount('children')
-            ->orderByRaw("FIELD(account_type, 'asset', 'liability', 'equity', 'income', 'expense')")
+            ->orderByRaw("CASE account_type WHEN 'asset' THEN 1 WHEN 'liability' THEN 2 WHEN 'equity' THEN 3 WHEN 'income' THEN 4 WHEN 'expense' THEN 5 ELSE 6 END")
             ->orderBy('code')
             ->get();
         $parentCandidates = FinanceAccount::query()

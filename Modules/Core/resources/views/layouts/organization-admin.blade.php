@@ -25,6 +25,8 @@
     $canViewFinanceJournals = false;
     $canViewFinanceTrialBalance = false;
     $canViewFinanceIncomeStatement = false;
+    $canViewFinanceBalanceSheet = false;
+    $canViewFinanceReports = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -60,6 +62,7 @@
         $canViewFinanceBalanceSheet = $financeModuleEnabled
             && \Illuminate\Support\Facades\Route::has('finance.reports.balance-sheet')
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
+        $canViewFinanceReports = $canViewFinanceTrialBalance || $canViewFinanceIncomeStatement || $canViewFinanceBalanceSheet;
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -207,9 +210,10 @@
                         </div>
                     </details>
                 @endif
-                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals)
+                @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceReports)
                     @php($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
-                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals'))
+                    @php($reportsNavActive = request()->routeIs('finance.reports.*'))
+                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals') || $reportsNavActive)
                     <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -236,30 +240,29 @@
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>
                                 </a>
                             @endif
-                        </div>
-                    </details>
-                @endif
-                @if ($canViewFinanceTrialBalance || $canViewFinanceIncomeStatement || $canViewFinanceBalanceSheet)
-                    @php($reportsNavActive = request()->routeIs('finance.reports.*'))
-                    <details class="nav-group" {{ $reportsNavActive ? 'open' : '' }}>
-                        <summary class="nav-group-toggle {{ $reportsNavActive ? 'active' : '' }}">
-                            <span class="nav-icon" aria-hidden="true">▤</span><span>Reports</span><span class="nav-chevron" aria-hidden="true"></span>
-                        </summary>
-                        <div class="nav-sublist">
-                            @if ($canViewFinanceTrialBalance)
-                                <a class="nav-link {{ request()->routeIs('finance.reports.trial-balance') ? 'active' : '' }}" href="{{ route('finance.reports.trial-balance') }}">
-                                    <span class="nav-icon" aria-hidden="true">▦</span><span>Trial Balance</span>
-                                </a>
-                            @endif
-                            @if ($canViewFinanceIncomeStatement)
-                                <a class="nav-link {{ request()->routeIs('finance.reports.income-statement') ? 'active' : '' }}" href="{{ route('finance.reports.income-statement') }}">
-                                    <span class="nav-icon" aria-hidden="true">▤</span><span>Income Statement</span>
-                                </a>
-                            @endif
-                            @if ($canViewFinanceBalanceSheet)
-                                <a class="nav-link {{ request()->routeIs('finance.reports.balance-sheet') ? 'active' : '' }}" href="{{ route('finance.reports.balance-sheet') }}">
-                                    <span class="nav-icon" aria-hidden="true">▦</span><span>Balance Sheet</span>
-                                </a>
+                            @if ($canViewFinanceReports)
+                                <details class="nav-group" {{ $reportsNavActive ? 'open' : '' }}>
+                                    <summary class="nav-group-toggle {{ $reportsNavActive ? 'active' : '' }}">
+                                        <span class="nav-icon" aria-hidden="true">▤</span><span>Reports</span><span class="nav-chevron" aria-hidden="true"></span>
+                                    </summary>
+                                    <div class="nav-sublist">
+                                        @if ($canViewFinanceTrialBalance)
+                                            <a class="nav-link {{ request()->routeIs('finance.reports.trial-balance') ? 'active' : '' }}" href="{{ route('finance.reports.trial-balance') }}">
+                                                <span class="nav-icon" aria-hidden="true">▦</span><span>Trial Balance</span>
+                                            </a>
+                                        @endif
+                                        @if ($canViewFinanceIncomeStatement)
+                                            <a class="nav-link {{ request()->routeIs('finance.reports.income-statement') ? 'active' : '' }}" href="{{ route('finance.reports.income-statement') }}">
+                                                <span class="nav-icon" aria-hidden="true">▤</span><span>Income Statement</span>
+                                            </a>
+                                        @endif
+                                        @if ($canViewFinanceBalanceSheet)
+                                            <a class="nav-link {{ request()->routeIs('finance.reports.balance-sheet') ? 'active' : '' }}" href="{{ route('finance.reports.balance-sheet') }}">
+                                                <span class="nav-icon" aria-hidden="true">▦</span><span>Balance Sheet</span>
+                                            </a>
+                                        @endif
+                                    </div>
+                                </details>
                             @endif
                         </div>
                     </details>
