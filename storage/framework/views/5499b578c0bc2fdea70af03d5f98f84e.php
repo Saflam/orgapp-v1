@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html
 <?php
     $layoutUser = auth()->user();
     $brandingOrganization = $layoutOrganization ?? null;
@@ -26,6 +26,7 @@
     $canViewFinanceTrialBalance = false;
     $canViewFinanceIncomeStatement = false;
     $canViewFinanceBalanceSheet = false;
+    $canViewFinanceCashFlowStatement = false;
     $canViewFinanceReports = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
@@ -62,7 +63,11 @@
         $canViewFinanceBalanceSheet = $financeModuleEnabled
             && \Illuminate\Support\Facades\Route::has('finance.reports.balance-sheet')
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
-        $canViewFinanceReports = $canViewFinanceTrialBalance || $canViewFinanceIncomeStatement || $canViewFinanceBalanceSheet;
+        $canViewFinanceCashFlowStatement = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.reports.cash-flow-statement')
+            && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
+        $canViewFinanceReports = $canViewFinanceTrialBalance || $canViewFinanceIncomeStatement
+            || $canViewFinanceBalanceSheet || $canViewFinanceCashFlowStatement;
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -260,6 +265,11 @@
                                         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceBalanceSheet): ?>
                                             <a class="nav-link <?php echo e(request()->routeIs('finance.reports.balance-sheet') ? 'active' : ''); ?>" href="<?php echo e(route('finance.reports.balance-sheet')); ?>">
                                                 <span class="nav-icon" aria-hidden="true">▦</span><span>Balance Sheet</span>
+                                            </a>
+                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceCashFlowStatement): ?>
+                                            <a class="nav-link <?php echo e(request()->routeIs('finance.reports.cash-flow-statement') ? 'active' : ''); ?>" href="<?php echo e(route('finance.reports.cash-flow-statement')); ?>">
+                                                <span class="nav-icon" aria-hidden="true">⇄</span><span>Cash Flow Statement</span>
                                             </a>
                                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                     </div>

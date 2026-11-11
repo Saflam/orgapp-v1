@@ -5,6 +5,7 @@ use Modules\Finance\Http\Controllers\FinanceBalanceSheetPdfController;
 use Modules\Finance\Http\Controllers\FinanceIncomeStatementPdfController;
 use Modules\Finance\Http\Controllers\FinanceTrialBalancePdfController;
 use Modules\Finance\Livewire\FinanceBalanceSheetReport;
+use Modules\Finance\Livewire\FinanceCashFlowStatementReport;
 use Modules\Finance\Livewire\FinanceChartOfAccountsManagement;
 use Modules\Finance\Livewire\FinanceIncomeStatementReport;
 use Modules\Finance\Livewire\FinanceJournalDetail;
@@ -23,6 +24,8 @@ Route::middleware(['auth', 'organization', 'organization.access', 'module:Financ
         Route::get('/organization/finance/reports/trial-balance', FinanceTrialBalanceReport::class)->name('finance.reports.trial-balance');
         Route::get('/organization/finance/reports/income-statement', FinanceIncomeStatementReport::class)->name('finance.reports.income-statement');
         Route::get('/organization/finance/reports/balance-sheet', FinanceBalanceSheetReport::class)->name('finance.reports.balance-sheet');
+        Route::get('/organization/finance/reports/cash-flow-statement', FinanceCashFlowStatementReport::class)
+            ->name('finance.reports.cash-flow-statement');
         Route::get('/organization/finance/reports/trial-balance/pdf', FinanceTrialBalancePdfController::class)
             ->name('finance.reports.trial-balance.pdf');
         Route::get('/organization/finance/reports/income-statement/pdf', FinanceIncomeStatementPdfController::class)
