@@ -40,7 +40,7 @@ class FinanceAccountProvisioningService
             ? $definition['normal_balance']
             : FinanceNormalBalance::from($definition['normal_balance']);
 
-        return FinanceAccount::firstOrCreate(
+        $account = FinanceAccount::firstOrCreate(
             [
                 'organization_id' => $organization->id,
                 'finance_scope_id' => $scope->id,
@@ -55,9 +55,26 @@ class FinanceAccountProvisioningService
                 'source_type' => $definition['source_type'] ?? null,
                 'source_id' => $definition['source_id'] ?? null,
                 'is_active' => $definition['is_active'] ?? true,
+                'is_cash_account' => $definition['is_cash_account'] ?? false,
+                'cash_flow_category' => $definition['cash_flow_category'] ?? null,
                 'metadata' => $definition['metadata'] ?? [],
             ]
         );
+
+        // Provisioning is also the repair path for existing default accounts.
+        // Do not overwrite user-managed settings on unrelated accounts.
+        $updates = [];
+        foreach (['is_cash_account', 'cash_flow_category'] as $field) {
+            if (array_key_exists($field, $definition) && $account->{$field} !== $definition[$field]) {
+                $updates[$field] = $definition[$field];
+            }
+        }
+        if ($updates !== []) {
+            $account->forceFill($updates)->save();
+            $account->refresh();
+        }
+
+        return $account;
     }
 
     public function provisionDefaults(Organization $organization, FinanceScope $scope): void
@@ -66,13 +83,13 @@ class FinanceAccountProvisioningService
 
         DB::transaction(function () use ($organization, $scope): void {
             $defaults = [
-                ['code' => '1000', 'name' => 'Cash', 'account_type' => 'asset', 'normal_balance' => 'debit'],
-                ['code' => '1100', 'name' => 'Bank', 'account_type' => 'asset', 'normal_balance' => 'debit'],
-                ['code' => '1200', 'name' => 'Accounts Receivable', 'account_type' => 'asset', 'normal_balance' => 'debit'],
-                ['code' => '2000', 'name' => 'Accounts Payable', 'account_type' => 'liability', 'normal_balance' => 'credit'],
+                ['code' => '1000', 'name' => 'Cash', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_cash_account' => true],
+                ['code' => '1100', 'name' => 'Bank', 'account_type' => 'asset', 'normal_balance' => 'debit', 'is_cash_account' => true],
+                ['code' => '1200', 'name' => 'Accounts Receivable', 'account_type' => 'asset', 'normal_balance' => 'debit', 'cash_flow_category' => 'operating'],
+                ['code' => '2000', 'name' => 'Accounts Payable', 'account_type' => 'liability', 'normal_balance' => 'credit', 'cash_flow_category' => 'operating'],
                 ['code' => '3000', 'name' => 'Equity', 'account_type' => 'equity', 'normal_balance' => 'credit'],
-                ['code' => '4000', 'name' => 'Sales Income', 'account_type' => 'income', 'normal_balance' => 'credit'],
-                ['code' => '5000', 'name' => 'General Expense', 'account_type' => 'expense', 'normal_balance' => 'debit'],
+                ['code' => '4000', 'name' => 'Sales Income', 'account_type' => 'income', 'normal_balance' => 'credit', 'cash_flow_category' => 'operating'],
+                ['code' => '5000', 'name' => 'General Expense', 'account_type' => 'expense', 'normal_balance' => 'debit', 'cash_flow_category' => 'operating'],
             ];
 
             foreach ($defaults as $definition) {

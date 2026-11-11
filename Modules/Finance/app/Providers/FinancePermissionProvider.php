@@ -21,6 +21,9 @@ class FinancePermissionProvider implements PermissionProvider
             ['module' => 'finance', 'name' => 'Manage Tax Configuration', 'code' => 'finance.tax.manage', 'description' => 'Create and manage organization-wide tax rates, tax groups and account mappings.'],
             ['module' => 'finance', 'name' => 'View Finance Items', 'code' => 'finance.item.view', 'description' => 'View finance items.'],
             ['module' => 'finance', 'name' => 'Manage Finance Items', 'code' => 'finance.item.manage', 'description' => 'Create and manage manually-owned finance items.'],
+            ['module' => 'finance', 'name' => 'View Settlement Ledger', 'code' => 'finance.settlement.view', 'description' => 'View organization and unit settlement obligations and transactions.'],
+            ['module' => 'finance', 'name' => 'Manage Settlements', 'code' => 'finance.settlement.manage', 'description' => 'Record inter-scope transfers and manage settlement transactions.'],
+            ['module' => 'finance', 'name' => 'Confirm Settlements', 'code' => 'finance.settlement.confirm', 'description' => 'Confirm or reject incoming settlement transfers for the authorized scope.'],
             ['module' => 'finance', 'name' => 'View Finance Customers', 'code' => 'finance.customer.view', 'description' => 'View finance customers.'],
             ['module' => 'finance', 'name' => 'Manage Finance Customers', 'code' => 'finance.customer.manage', 'description' => 'Create and manage external finance customers.'],
         ];

@@ -43,6 +43,7 @@ class FinanceServiceProvider extends ModuleServiceProvider
         $this->app->singleton(\Modules\Finance\Services\FinanceChartOfAccountsService::class);
         $this->app->singleton(\Modules\Finance\Services\FinancePeriodService::class);
         $this->app->singleton(\Modules\Finance\Services\FinanceJournalService::class);
+        $this->app->singleton(\Modules\Finance\Services\FinanceSettlementService::class);
         $this->app->singleton(\Modules\Finance\Services\FinanceReceiptService::class);
         $this->app->singleton(\Modules\Finance\Services\MemberPaymentFinanceService::class);
 

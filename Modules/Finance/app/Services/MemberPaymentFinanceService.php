@@ -21,6 +21,7 @@ class MemberPaymentFinanceService
         private readonly FinancePeriodService $periods,
         private readonly FinanceJournalService $journals,
         private readonly FinanceReceiptService $receipts,
+        private readonly FinanceSettlementService $settlements,
     ) {}
 
     public function handle(MemberPayment $payment): ?FinanceReceipt
@@ -38,6 +39,7 @@ class MemberPaymentFinanceService
             ->first();
 
         if ($existing) {
+            $this->settlements->createObligationsForPayment($payment);
             return $this->receiptForExistingJournal($existing);
         }
 
@@ -70,14 +72,23 @@ class MemberPaymentFinanceService
             $scope,
         );
 
+        $interScopeLines = $this->resolveInterScopeRecognitionLines(
+            $organization,
+            $payment,
+            $scope,
+        );
+
         $lines = [
             [
                 'finance_account_id' => $depositAccount->id,
                 'description' => 'Membership payment received',
+                'cost_center_type' => $payment->collector_scope_type,
+                'cost_center_id' => $payment->collector_scope_id,
                 'debit' => (string) $payment->total_amount,
                 'credit' => '0',
             ],
             ...$creditLines,
+            ...$interScopeLines,
         ];
 
         try {
@@ -116,6 +127,8 @@ class MemberPaymentFinanceService
                 throw $exception;
             }
         }
+
+        $this->settlements->createObligationsForPayment($payment);
 
         return $this->receipts->issue(
             $organization,
@@ -187,6 +200,69 @@ class MemberPaymentFinanceService
             ->firstOrFail();
     }
 
+
+    /**
+     * Recognize inter-scope balances in the same organization-wide journal.
+     * The beneficiary scope receives a receivable; the collecting scope
+     * receives the corresponding payable.
+     */
+    private function resolveInterScopeRecognitionLines(
+        Organization $organization,
+        MemberPayment $payment,
+        FinanceScope $scope,
+    ): array {
+        $payment->loadMissing('lines.allocations');
+
+        $result = [];
+
+        foreach ($payment->lines as $line) {
+            foreach ($line->allocations as $allocation) {
+                $sameScope = $payment->collector_scope_type === $allocation->scope_type
+                    && (int) $payment->collector_scope_id === (int) $allocation->scope_id;
+
+                if ($sameScope) {
+                    continue;
+                }
+
+                $receivableAccount = FinanceAccount::query()
+                    ->where('organization_id', $organization->id)
+                    ->where('finance_scope_id', $scope->id)
+                    ->where('code', '1200')
+                    ->where('is_active', true)
+                    ->firstOrFail();
+
+                $payableAccount = FinanceAccount::query()
+                    ->where('organization_id', $organization->id)
+                    ->where('finance_scope_id', $scope->id)
+                    ->where('code', '2000')
+                    ->where('is_active', true)
+                    ->firstOrFail();
+
+                $amount = (string) $allocation->amount;
+
+                $result[] = [
+                    'finance_account_id' => $receivableAccount->id,
+                    'description' => 'Inter-scope receivable for membership allocation',
+                    'cost_center_type' => $allocation->scope_type,
+                    'cost_center_id' => $allocation->scope_id,
+                    'debit' => $amount,
+                    'credit' => '0',
+                ];
+
+                $result[] = [
+                    'finance_account_id' => $payableAccount->id,
+                    'description' => 'Inter-scope payable for membership allocation',
+                    'cost_center_type' => $payment->collector_scope_type,
+                    'cost_center_id' => $payment->collector_scope_id,
+                    'debit' => '0',
+                    'credit' => $amount,
+                ];
+            }
+        }
+
+        return $result;
+    }
+
     private function resolveIncomeLines(
         Organization $organization,
         MemberPayment $payment,
@@ -241,12 +317,28 @@ class MemberPaymentFinanceService
                 );
             }
 
-            $result[] = [
-                'finance_account_id' => $accountId,
-                'description' => $line->obligation?->item_title ?? 'Membership income',
-                'debit' => '0',
-                'credit' => (string) $line->amount,
-            ];
+            $line->loadMissing('allocations');
+            if ($line->allocations->isNotEmpty()) {
+                foreach ($line->allocations as $allocation) {
+                    $result[] = [
+                        'finance_account_id' => $accountId,
+                        'description' => $line->obligation?->item_title ?? 'Membership income',
+                        'cost_center_type' => $allocation->scope_type,
+                        'cost_center_id' => $allocation->scope_id,
+                        'debit' => '0',
+                        'credit' => (string) $allocation->amount,
+                    ];
+                }
+            } else {
+                $result[] = [
+                    'finance_account_id' => $accountId,
+                    'description' => $line->obligation?->item_title ?? 'Membership income',
+                    'cost_center_type' => $payment->collector_scope_type,
+                    'cost_center_id' => $payment->collector_scope_id,
+                    'debit' => '0',
+                    'credit' => (string) $line->amount,
+                ];
+            }
         }
 
         return $result;

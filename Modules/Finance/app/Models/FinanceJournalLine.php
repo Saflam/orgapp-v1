@@ -12,21 +12,13 @@ class FinanceJournalLine extends Model
     protected $table = 'finance_journal_lines';
 
     protected $fillable = [
-        'journal_id',
-        'finance_account_id',
-        'description',
-        'debit',
-        'credit',
-        'metadata',
+        'journal_id', 'finance_account_id', 'finance_cost_center_id',
+        'description', 'debit', 'credit', 'metadata',
     ];
 
     protected function casts(): array
     {
-        return [
-            'debit' => 'decimal:4',
-            'credit' => 'decimal:4',
-            'metadata' => 'array',
-        ];
+        return ['debit' => 'decimal:4', 'credit' => 'decimal:4', 'metadata' => 'array'];
     }
 
     public function journal(): BelongsTo
@@ -37,6 +29,11 @@ class FinanceJournalLine extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(FinanceAccount::class, 'finance_account_id');
+    }
+
+    public function costCenter(): BelongsTo
+    {
+        return $this->belongsTo(FinanceCostCenter::class, 'finance_cost_center_id');
     }
 
     protected static function booted(): void

@@ -34,6 +34,22 @@ class FinanceJournalPermissionRegistrationTest extends TestCase
             'name' => 'Reverse Journal Entries',
             'code' => 'finance.journal.reverse',
         ]);
+
+        $this->assertDatabaseHas('permissions', [
+            'module' => 'finance',
+            'name' => 'View Settlement Ledger',
+            'code' => 'finance.settlement.view',
+        ]);
+        $this->assertDatabaseHas('permissions', [
+            'module' => 'finance',
+            'name' => 'Manage Settlements',
+            'code' => 'finance.settlement.manage',
+        ]);
+        $this->assertDatabaseHas('permissions', [
+            'module' => 'finance',
+            'name' => 'Confirm Settlements',
+            'code' => 'finance.settlement.confirm',
+        ]);
     }
 
     public function test_finance_administrator_role_includes_journal_permissions(): void
@@ -45,5 +61,8 @@ class FinanceJournalPermissionRegistrationTest extends TestCase
         $this->assertContains('finance.journal.view', $financeAdministrator['permissions']);
         $this->assertContains('finance.journal.post', $financeAdministrator['permissions']);
         $this->assertContains('finance.journal.reverse', $financeAdministrator['permissions']);
+        $this->assertContains('finance.settlement.view', $financeAdministrator['permissions']);
+        $this->assertContains('finance.settlement.manage', $financeAdministrator['permissions']);
+        $this->assertContains('finance.settlement.confirm', $financeAdministrator['permissions']);
     }
 }

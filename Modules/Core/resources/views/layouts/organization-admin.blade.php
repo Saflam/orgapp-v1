@@ -23,6 +23,7 @@
     $canViewFinanceAccounts = false;
     $canViewFinanceTaxes = false;
     $canViewFinanceJournals = false;
+    $canViewFinanceSettlements = false;
     $canViewFinanceTrialBalance = false;
     $canViewFinanceIncomeStatement = false;
     $canViewFinanceBalanceSheet = false;
@@ -54,6 +55,19 @@
                 $membershipAuthorization->can($layoutUser, 'finance.journal.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'finance.journal.post', $membershipOrganizationContext)
             );
+        $canViewFinanceSettlements = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.settlements')
+            && $membershipAuthorization->can($layoutUser, 'finance.settlement.view', $membershipOrganizationContext);
+        if ($financeModuleEnabled && \Illuminate\Support\Facades\Route::has('finance.settlements') && ! $canViewFinanceSettlements) {
+            $canViewFinanceSettlements = \Modules\Core\Models\Unit::query()
+                ->where('organization_id', $brandingOrganization->id)
+                ->get()
+                ->contains(fn ($unit) => $membershipAuthorization->can(
+                    $layoutUser,
+                    'finance.settlement.view',
+                    new \Modules\Core\Data\AuthorizationContext((int) $brandingOrganization->id, (int) $unit->id),
+                ));
+        }
         $canViewFinanceTrialBalance = $financeModuleEnabled
             && \Illuminate\Support\Facades\Route::has('finance.reports.trial-balance')
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
@@ -218,7 +232,7 @@
                 @if ($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceReports)
                     @php($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes'))
                     @php($reportsNavActive = request()->routeIs('finance.reports.*'))
-                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals') || $reportsNavActive)
+                    @php($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals', 'finance.settlements') || $reportsNavActive)
                     <details class="nav-group" {{ $financeNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $financeNavActive ? 'active' : '' }}">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -243,6 +257,11 @@
                             @if ($canViewFinanceJournals)
                                 <a class="nav-link {{ request()->routeIs('finance.journals') ? 'active' : '' }}" href="{{ route('finance.journals') }}">
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>
+                                </a>
+                            @endif
+                            @if ($canViewFinanceSettlements)
+                                <a class="nav-link {{ request()->routeIs('finance.settlements') ? 'active' : '' }}" href="{{ route('finance.settlements') }}">
+                                    <span class="nav-icon" aria-hidden="true">⇄</span><span>Central / Unit Settlements</span>
                                 </a>
                             @endif
                             @if ($canViewFinanceReports)

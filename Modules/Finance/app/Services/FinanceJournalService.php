@@ -9,6 +9,8 @@ use Modules\Finance\Enums\FinanceJournalStatus;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournal;
 use Modules\Finance\Models\FinancePeriod;
+use Modules\Finance\Models\FinanceCostCenter;
+use Modules\Finance\Services\FinanceCostCenterService;
 use Modules\Finance\Models\FinanceScope;
 
 class FinanceJournalService
@@ -194,6 +196,7 @@ class FinanceJournalService
             foreach ($originalLines as $line) {
                 $reversal->lines()->create([
                     'finance_account_id' => $line->finance_account_id,
+                    'finance_cost_center_id' => $line->finance_cost_center_id,
                     'description' => $line->description,
                     'debit' => $line->credit,
                     'credit' => $line->debit,
@@ -243,8 +246,29 @@ class FinanceJournalService
             );
         }
 
+        $costCenterId = $line['finance_cost_center_id'] ?? null;
+        if ($costCenterId !== null) {
+            $costCenter = FinanceCostCenter::query()
+                ->whereKey($costCenterId)
+                ->where('organization_id', $organization->id)
+                ->where('is_active', true)
+                ->first();
+
+            if (! $costCenter) {
+                throw new \InvalidArgumentException('The journal cost center is inactive or does not belong to the organization.');
+            }
+        } elseif (isset($line['cost_center_type'])) {
+            $costCenter = app(FinanceCostCenterService::class)->resolve(
+                $organization,
+                (string) $line['cost_center_type'],
+                isset($line['cost_center_id']) ? (int) $line['cost_center_id'] : null,
+            );
+            $costCenterId = $costCenter->id;
+        }
+
         return [
             'finance_account_id' => $account->id,
+            'finance_cost_center_id' => $costCenterId,
             'description' => $line['description'] ?? null,
             'debit' => $debit,
             'credit' => $credit,
