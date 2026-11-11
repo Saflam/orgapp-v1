@@ -5,6 +5,8 @@ namespace Modules\Finance\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
+use Modules\Committee\Models\CommitteeType;
 use Modules\Finance\Enums\FinanceJournalStatus;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournal;
@@ -280,4 +282,100 @@ class FinanceTrialBalanceTest extends TestCase
         $this->assertSame('35.0000', $rows->firstWhere('account_id', $this->cash->id)['debit']);
         $this->assertSame('35.0000', $rows->firstWhere('account_id', $this->income->id)['credit']);
     }
+
+
+    public function test_cost_center_filter_uses_journal_line_attribution_for_units_and_committees(): void
+    {
+        $unit = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $committeeType = CommitteeType::create([
+            'organization_id' => $this->organization->id,
+            'name' => 'Event Committee',
+            'code' => 'EVENT',
+            'is_active' => true,
+        ]);
+        $committee = Committee::create([
+            'organization_id' => $this->organization->id,
+            'committee_type_id' => $committeeType->id,
+            'name' => 'Annual Event Committee',
+            'kind' => 'recurring',
+            'status' => 'active',
+        ]);
+
+        app(FinanceJournalService::class)->post($this->organization, $this->scope, $this->period, [
+            'transaction_date' => '2026-05-10',
+            'description' => 'One journal attributed to two cost centers',
+            'lines' => [
+                [
+                    'finance_account_id' => $this->cash->id,
+                    'cost_center_type' => 'unit',
+                    'cost_center_id' => $unit->id,
+                    'debit' => '40.0000',
+                ],
+                [
+                    'finance_account_id' => $this->cash->id,
+                    'cost_center_type' => 'committee',
+                    'cost_center_id' => $committee->id,
+                    'debit' => '60.0000',
+                ],
+                [
+                    'finance_account_id' => $this->income->id,
+                    'cost_center_type' => 'unit',
+                    'cost_center_id' => $unit->id,
+                    'credit' => '40.0000',
+                ],
+                [
+                    'finance_account_id' => $this->income->id,
+                    'cost_center_type' => 'committee',
+                    'cost_center_id' => $committee->id,
+                    'credit' => '60.0000',
+                ],
+            ],
+        ]);
+
+        $unitReport = app(FinanceTrialBalanceService::class)->generate(
+            $this->organization,
+            $this->scope,
+            '2026-12-31',
+            null,
+            'unit',
+            $unit->id,
+        );
+        $committeeReport = app(FinanceTrialBalanceService::class)->generate(
+            $this->organization,
+            $this->scope,
+            '2026-12-31',
+            null,
+            'committee',
+            $committee->id,
+        );
+        $allScopesReport = $this->report('2026-12-31');
+
+        $this->assertSame('40.0000', collect($unitReport['accounts'])->firstWhere('account_id', $this->cash->id)['debit']);
+        $this->assertSame('40.0000', collect($unitReport['accounts'])->firstWhere('account_id', $this->income->id)['credit']);
+        $this->assertSame('60.0000', collect($committeeReport['accounts'])->firstWhere('account_id', $this->cash->id)['debit']);
+        $this->assertSame('60.0000', collect($committeeReport['accounts'])->firstWhere('account_id', $this->income->id)['credit']);
+        $this->assertSame('100.0000', collect($allScopesReport['accounts'])->firstWhere('account_id', $this->cash->id)['debit']);
+        $this->assertSame('100.0000', collect($allScopesReport['accounts'])->firstWhere('account_id', $this->income->id)['credit']);
+    }
+
+    public function test_central_cost_center_filter_includes_legacy_organization_wide_lines_only(): void
+    {
+        $unit = Unit::factory()->create(['organization_id' => $this->organization->id]);
+
+        $this->postJournal('2026-05-01', 'Legacy central entry', $this->cash, $this->income, '15.0000');
+        $this->postJournal('2026-05-02', 'Legacy unit entry', $this->cash, $this->income, '25.0000', $unit->id);
+
+        $centralReport = app(FinanceTrialBalanceService::class)->generate(
+            $this->organization,
+            $this->scope,
+            '2026-12-31',
+            null,
+            'organization',
+            $this->organization->id,
+        );
+
+        $this->assertSame('15.0000', collect($centralReport['accounts'])->firstWhere('account_id', $this->cash->id)['debit']);
+        $this->assertSame('15.0000', collect($centralReport['accounts'])->firstWhere('account_id', $this->income->id)['credit']);
+    }
+
 }

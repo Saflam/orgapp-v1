@@ -33,7 +33,7 @@
     <table class="meta">
         <tr>
             <td><strong>As of date:</strong> {{ \Illuminate\Support\Carbon::parse($report['as_of_date'])->format('d M Y') }}</td>
-            <td><strong>Unit:</strong> {{ $unitName }}</td>
+            <td><strong>Cost center:</strong> {{ $costCenterName }}</td>
             <td><strong>Generated:</strong> {{ $generatedAt->format('d M Y H:i') }}</td>
         </tr>
     </table>

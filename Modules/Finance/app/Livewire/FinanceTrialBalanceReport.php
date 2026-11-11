@@ -10,6 +10,7 @@ use Livewire\Component;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
 use Modules\Core\Services\AuthorizationService;
 use Modules\Finance\Models\FinancePeriod;
 use Modules\Finance\Services\FinanceScopeService;
@@ -22,6 +23,8 @@ class FinanceTrialBalanceReport extends Component
     public ?int $periodId = null;
     public string $asOfDate = '';
     public ?int $unitId = null;
+    public string $costCenterType = 'all';
+    public ?int $costCenterOwnerId = null;
 
     public function mount(CurrentOrganization $currentOrganization, AuthorizationService $authorization): void
     {
@@ -57,6 +60,27 @@ class FinanceTrialBalanceReport extends Component
         if ($this->unitId === 0) {
             $this->unitId = null;
         }
+
+        // Preserve compatibility with existing callers that still set unitId.
+        $this->costCenterType = $this->unitId === null ? 'all' : 'unit';
+        $this->costCenterOwnerId = $this->unitId;
+    }
+
+    public function updatedCostCenterType(): void
+    {
+        if (! in_array($this->costCenterType, ['all', 'organization', 'unit', 'committee'], true)) {
+            $this->costCenterType = 'all';
+        }
+
+        $this->costCenterOwnerId = $this->costCenterType === 'organization'
+            ? (int) $this->organization->id
+            : null;
+        $this->unitId = null;
+    }
+
+    public function updatedCostCenterOwnerId(): void
+    {
+        $this->unitId = $this->costCenterType === 'unit' ? $this->costCenterOwnerId : null;
     }
 
     public function render(
@@ -83,20 +107,36 @@ class FinanceTrialBalanceReport extends Component
             ->orderBy('name')
             ->get();
 
-        if ($this->unitId !== null) {
-            abort_unless($units->contains('id', $this->unitId), 404);
+        $committees = Committee::query()
+            ->where('organization_id', $this->organization->id)
+            ->orderBy('name')
+            ->get();
+
+        if ($this->costCenterType === 'unit' && $this->costCenterOwnerId !== null) {
+            abort_unless($units->contains('id', $this->costCenterOwnerId), 404);
+        } elseif ($this->costCenterType === 'committee' && $this->costCenterOwnerId !== null) {
+            abort_unless($committees->contains('id', $this->costCenterOwnerId), 404);
+        } elseif ($this->costCenterType === 'organization') {
+            $this->costCenterOwnerId = (int) $this->organization->id;
         }
+
+        // A type may be selected before its owner. Until then, show all scopes.
+        $effectiveType = in_array($this->costCenterType, ['unit', 'committee'], true)
+            && $this->costCenterOwnerId === null ? 'all' : $this->costCenterType;
 
         $report = $trialBalance->generate(
             $this->organization,
             $scope,
             $this->asOfDate,
-            $this->unitId,
+            null,
+            $effectiveType,
+            $effectiveType === 'all' ? null : $this->costCenterOwnerId,
         );
 
         return view('finance::livewire.reports.trial-balance', [
             'periods' => $periods,
             'units' => $units,
+            'committees' => $committees,
             'report' => $report,
         ])->layout('core::layouts.organization-admin', [
             'pageTitle' => 'Trial Balance',

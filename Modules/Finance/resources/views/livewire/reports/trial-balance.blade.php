@@ -30,14 +30,32 @@
             </div>
 
             <div class="finance-trial-balance__field">
-                <label for="unitId">Unit</label>
-                <select id="unitId" wire:model.live="unitId">
-                    <option value="">All Units</option>
-                    @foreach ($units as $unit)
-                        <option value="{{ $unit->id }}">{{ $unit->name }}</option>
-                    @endforeach
+                <label for="costCenterType">Cost center scope</label>
+                <select id="costCenterType" wire:model.live="costCenterType">
+                    <option value="all">All Scopes</option>
+                    <option value="organization">Central / Organization</option>
+                    <option value="unit">Individual Units</option>
+                    <option value="committee">Individual Committees</option>
                 </select>
             </div>
+
+            @if (in_array($costCenterType, ['unit', 'committee'], true))
+                <div class="finance-trial-balance__field">
+                    <label for="costCenterOwnerId">{{ $costCenterType === 'unit' ? 'Unit' : 'Committee' }}</label>
+                    <select id="costCenterOwnerId" wire:model.live="costCenterOwnerId">
+                        <option value="">Select {{ $costCenterType === 'unit' ? 'unit' : 'committee' }}</option>
+                        @if ($costCenterType === 'unit')
+                            @foreach ($units as $unit)
+                                <option value="{{ $unit->id }}">{{ $unit->name }}</option>
+                            @endforeach
+                        @else
+                            @foreach ($committees as $committee)
+                                <option value="{{ $committee->id }}">{{ $committee->name }}</option>
+                            @endforeach
+                        @endif
+                    </select>
+                </div>
+            @endif
         </div>
     </section>
 
@@ -53,7 +71,8 @@
                     class="finance-trial-balance__export-button"
                     href="{{ route('finance.reports.trial-balance.pdf', array_filter([
                         'as_of_date' => $report['as_of_date'],
-                        'unit_id' => $this->unitId,
+                        'cost_center_type' => $this->costCenterType,
+                        'cost_center_id' => $this->costCenterOwnerId,
                     ], static fn ($value) => $value !== null)) }}"
                 >
                     <span aria-hidden="true">↓</span>

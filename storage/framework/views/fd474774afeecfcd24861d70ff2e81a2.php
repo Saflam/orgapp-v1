@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Trial Balance</title>
+    <style>
+        @page { margin: 28px 30px; }
+        body { font-family: DejaVu Sans, sans-serif; color: #172033; font-size: 9px; }
+        .heading { border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 16px; }
+        h1 { font-size: 19px; margin: 0 0 5px; }
+        .subtitle { color: #64748b; font-size: 10px; margin: 0; }
+        .meta { width: 100%; margin: 12px 0 16px; }
+        .meta td { padding: 4px 8px 4px 0; color: #475569; }
+        .meta strong { color: #172033; }
+        table.report { width: 100%; border-collapse: collapse; }
+        .report th { background: #eef2f7; color: #475569; font-size: 8px; text-transform: uppercase; text-align: left; }
+        .report th, .report td { border: 1px solid #dbe2ea; padding: 7px 8px; }
+        .numeric { text-align: right !important; white-space: nowrap; }
+        .report tbody tr { page-break-inside: avoid; }
+        .report tfoot th, .report tfoot td { background: #f8fafc; font-weight: bold; }
+        .difference { border-top: 2px solid #94a3b8; }
+        .balanced { color: #166534; }
+        .unbalanced { color: #b91c1c; }
+        .footer { margin-top: 14px; color: #64748b; font-size: 8px; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="heading">
+        <h1><?php echo e($organization->name); ?> — Trial Balance</h1>
+        <p class="subtitle">Cumulative posted account balances through the selected date</p>
+    </div>
+
+    <table class="meta">
+        <tr>
+            <td><strong>As of date:</strong> <?php echo e(\Illuminate\Support\Carbon::parse($report['as_of_date'])->format('d M Y')); ?></td>
+            <td><strong>Cost center:</strong> <?php echo e($costCenterName); ?></td>
+            <td><strong>Generated:</strong> <?php echo e($generatedAt->format('d M Y H:i')); ?></td>
+        </tr>
+    </table>
+
+    <table class="report">
+        <thead>
+            <tr>
+                <th>Account code</th>
+                <th>Account name</th>
+                <th>Type</th>
+                <th class="numeric">Debit</th>
+                <th class="numeric">Credit</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $report['accounts']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $account): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                <tr>
+                    <td><?php echo e($account['code']); ?></td>
+                    <td><?php echo e($account['name']); ?></td>
+                    <td><?php echo e(\Illuminate\Support\Str::headline($account['account_type'])); ?></td>
+                    <td class="numeric"><?php echo e($account['debit']); ?></td>
+                    <td class="numeric"><?php echo e($account['credit']); ?></td>
+                </tr>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                <tr><td colspan="5" style="text-align:center">No accounts are available for this report.</td></tr>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </tbody>
+        <tfoot>
+            <tr>
+                <th colspan="3">Debit total</th>
+                <td class="numeric"><?php echo e($report['debit_total']); ?></td>
+                <td></td>
+            </tr>
+            <tr>
+                <th colspan="3">Credit total</th>
+                <td></td>
+                <td class="numeric"><?php echo e($report['credit_total']); ?></td>
+            </tr>
+            <tr class="difference">
+                <th colspan="3">Difference</th>
+                <td colspan="2" class="numeric <?php echo e($report['difference'] === '0.0000' ? 'balanced' : 'unbalanced'); ?>">
+                    <?php echo e($report['difference']); ?>
+
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="footer">Generated by Saradhi</div>
+</body>
+</html>
+<?php /**PATH C:\projects\personal\prasanth\Saflivo\Modules/Finance\resources/views/livewire/reports/trial-balance-pdf.blade.php ENDPATH**/ ?>

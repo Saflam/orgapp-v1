@@ -4,12 +4,15 @@ namespace Modules\Finance\Tests\Feature;
 
 use App\Models\OrganizationMembership;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
+use Modules\Committee\Models\CommitteeType;
 use Modules\Core\Services\OrganizationModuleService;
 use Modules\Core\Services\RoleAssignmentService;
 use Modules\Finance\Models\FinanceAccount;
@@ -17,6 +20,7 @@ use Modules\Finance\Services\FinanceAccountProvisioningService;
 use Modules\Finance\Services\FinanceJournalService;
 use Modules\Finance\Services\FinancePeriodService;
 use Modules\Finance\Services\FinanceScopeService;
+use Modules\Finance\Services\FinanceTrialBalanceService;
 use Tests\TestCase;
 
 class FinanceTrialBalancePdfExportTest extends TestCase
@@ -131,6 +135,90 @@ class FinanceTrialBalancePdfExportTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/pdf');
         $this->assertStringStartsWith('%PDF-', $response->getContent());
+    }
+
+    public function test_pdf_export_uses_selected_unit_cost_center_and_labels_it(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $unit = Unit::factory()->create([
+            'organization_id' => $this->organization->id,
+            'name' => 'North Unit',
+        ]);
+
+        $expectedReport = [
+            'as_of_date' => '2026-06-30',
+            'accounts' => [],
+            'debit_total' => '0.0000',
+            'credit_total' => '0.0000',
+            'difference' => '0.0000',
+        ];
+
+        $service = \Mockery::mock(FinanceTrialBalanceService::class);
+        $service->shouldReceive('generate')
+            ->once()
+            ->withArgs(function ($organization, $scope, $date, $unitId, $costCenterType, $ownerId) use ($unit) {
+                return $organization->is($this->organization)
+                    && $date === '2026-06-30'
+                    && $unitId === null
+                    && $costCenterType === 'unit'
+                    && $ownerId === $unit->id;
+            })
+            ->andReturn($expectedReport);
+        $this->app->instance(FinanceTrialBalanceService::class, $service);
+
+        $pdf = \Mockery::mock(\Barryvdh\DomPDF\PDF::class);
+        $pdf->shouldReceive('setPaper')->once()->andReturnSelf();
+        $pdf->shouldReceive('download')
+            ->once()
+            ->andReturnUsing(function (string $filename) {
+                return response('%PDF-test', 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                ]);
+            });
+
+        Pdf::shouldReceive('loadView')
+            ->once()
+            ->with('finance::livewire.reports.trial-balance-pdf', \Mockery::on(function (array $data) {
+                return ($data['costCenterName'] ?? null) === 'North Unit';
+            }))
+            ->andReturn($pdf);
+
+        $response = $this->actingAs($user)->get($this->pdfUrl([
+            'as_of_date' => '2026-06-30',
+            'cost_center_type' => 'unit',
+            'cost_center_id' => $unit->id,
+        ]));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_pdf_export_rejects_a_committee_from_another_organization(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $otherOrganization = Organization::factory()->create();
+        $committeeType = CommitteeType::create([
+            'organization_id' => $otherOrganization->id,
+            'name' => 'Event Committee',
+            'code' => 'EVENT',
+            'is_active' => true,
+        ]);
+        $foreignCommittee = Committee::create([
+            'organization_id' => $otherOrganization->id,
+            'committee_type_id' => $committeeType->id,
+            'name' => 'Foreign Event Committee',
+            'kind' => 'recurring',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($user)
+            ->get($this->pdfUrl([
+                'as_of_date' => '2026-06-30',
+                'cost_center_type' => 'committee',
+                'cost_center_id' => $foreignCommittee->id,
+            ]))
+            ->assertNotFound();
     }
 
     private function account(string $code): FinanceAccount

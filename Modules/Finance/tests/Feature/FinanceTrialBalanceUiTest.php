@@ -12,6 +12,9 @@ use Modules\Core\Models\Organization;
 use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Enums\CommitteeKind;
+use Modules\Committee\Models\Committee;
+use Modules\Committee\Models\CommitteeType;
 use Modules\Core\Services\OrganizationModuleService;
 use Modules\Core\Services\RoleAssignmentService;
 use Modules\Finance\Livewire\FinanceTrialBalanceReport;
@@ -72,7 +75,7 @@ class FinanceTrialBalanceUiTest extends TestCase
         $this->reportScreen($user)
             ->assertSee('Trial Balance')
             ->assertSee('As of date')
-            ->assertSee('All Units')
+            ->assertSee('All Scopes')
             ->assertSee('1000')
             ->assertSee('Cash')
             ->assertSee('100.0000')
@@ -146,6 +149,96 @@ class FinanceTrialBalanceUiTest extends TestCase
 
         $this->reportScreen($user)
             ->assertSee('30.0000');
+    }
+
+
+    public function test_report_exposes_all_cost_center_filter_options_and_filters_by_unit_and_committee_attribution(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $unit = Unit::factory()->create([
+            'organization_id' => $this->organization->id,
+            'name' => 'Unit Cost Center',
+        ]);
+        $committeeType = CommitteeType::create([
+            'organization_id' => $this->organization->id,
+            'name' => 'Standing Committee',
+            'code' => 'standing_' . Str::lower(Str::random(6)),
+            'is_active' => true,
+        ]);
+        $committee = Committee::create([
+            'organization_id' => $this->organization->id,
+            'committee_type_id' => $committeeType->id,
+            'name' => 'Finance Committee Cost Center',
+            'kind' => CommitteeKind::RECURRING,
+            'status' => 'active',
+        ]);
+
+        app(FinanceJournalService::class)->post($this->organization, $this->scope, $this->period, [
+            'transaction_date' => '2026-04-10',
+            'description' => 'Unit attributed journal',
+            'lines' => [
+                ['finance_account_id' => $this->cash->id, 'debit' => '40.0000', 'cost_center_type' => 'unit', 'cost_center_id' => $unit->id],
+                ['finance_account_id' => $this->income->id, 'credit' => '40.0000', 'cost_center_type' => 'unit', 'cost_center_id' => $unit->id],
+            ],
+        ]);
+
+        app(FinanceJournalService::class)->post($this->organization, $this->scope, $this->period, [
+            'transaction_date' => '2026-04-11',
+            'description' => 'Committee attributed journal',
+            'lines' => [
+                ['finance_account_id' => $this->cash->id, 'debit' => '60.0000', 'cost_center_type' => 'committee', 'cost_center_id' => $committee->id],
+                ['finance_account_id' => $this->income->id, 'credit' => '60.0000', 'cost_center_type' => 'committee', 'cost_center_id' => $committee->id],
+            ],
+        ]);
+
+        $component = $this->reportScreen($user)
+            ->assertSee('All Scopes')
+            ->assertSee('Central / Organization')
+            ->assertSee('Individual Units')
+            ->assertSee('Individual Committees')
+            ->set('costCenterType', 'unit')
+            ->assertSee('Unit Cost Center')
+            ->set('costCenterOwnerId', $unit->id)
+            ->assertSee('40.0000')
+            ->assertDontSee('100.0000');
+
+        $component
+            ->set('costCenterType', 'committee')
+            ->assertSee('Finance Committee Cost Center')
+            ->set('costCenterOwnerId', $committee->id)
+            ->assertSee('60.0000')
+            ->assertDontSee('100.0000');
+    }
+
+    public function test_report_can_filter_central_organization_cost_center(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+
+        app(FinanceJournalService::class)->post($this->organization, $this->scope, $this->period, [
+            'transaction_date' => '2026-04-10',
+            'description' => 'Central attributed journal',
+            'lines' => [
+                ['finance_account_id' => $this->cash->id, 'debit' => '15.0000', 'cost_center_type' => 'organization', 'cost_center_id' => $this->organization->id],
+                ['finance_account_id' => $this->income->id, 'credit' => '15.0000', 'cost_center_type' => 'organization', 'cost_center_id' => $this->organization->id],
+            ],
+        ]);
+
+        $this->reportScreen($user)
+            ->set('costCenterType', 'organization')
+            ->set('costCenterOwnerId', $this->organization->id)
+            ->assertSee('15.0000');
+    }
+
+    public function test_report_rejects_cost_center_owned_by_another_organization(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $otherOrganization = Organization::factory()->create();
+        $foreignUnit = Unit::factory()->create(['organization_id' => $otherOrganization->id]);
+
+        $this->reportScreen($user)
+            ->set('costCenterType', 'unit')
+            ->set('costCenterOwnerId', $foreignUnit->id)
+            ->assertStatus(404);
     }
 
     public function test_unbalanced_report_difference_is_visible(): void

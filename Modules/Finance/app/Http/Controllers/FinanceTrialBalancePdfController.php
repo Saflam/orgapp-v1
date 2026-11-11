@@ -6,6 +6,7 @@ use App\Support\Organization\CurrentOrganization;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Modules\Committee\Models\Committee;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
@@ -39,8 +40,11 @@ class FinanceTrialBalancePdfController
 
         $validator = Validator::make($request->query(), [
             'as_of_date' => ['required', 'date_format:Y-m-d'],
+            // unit_id remains supported for existing PDF links.
             'unit_id' => ['nullable', 'integer'],
             'period_id' => ['nullable', 'integer'],
+            'cost_center_type' => ['nullable', 'string', 'in:all,organization,unit,committee'],
+            'cost_center_id' => ['nullable', 'integer'],
         ]);
 
         if ($validator->fails()) {
@@ -48,7 +52,6 @@ class FinanceTrialBalancePdfController
         }
 
         $validated = $validator->validated();
-
         $scope = $scopes->organizationScope($organization);
 
         if (! empty($validated['period_id'])) {
@@ -60,32 +63,67 @@ class FinanceTrialBalancePdfController
             abort_unless($period->ends_on->toDateString() === $validated['as_of_date'], 422);
         }
 
-        $unitId = isset($validated['unit_id']) ? (int) $validated['unit_id'] : null;
+        // New cost-center parameters take precedence. Older unit_id URLs are
+        // translated to the equivalent unit cost-center selection.
+        $costCenterType = $validated['cost_center_type']
+            ?? (isset($validated['unit_id']) ? 'unit' : 'all');
 
-        if ($unitId !== null) {
-            Unit::query()
-                ->where('organization_id', $organization->id)
-                ->findOrFail($unitId);
-        }
+        $costCenterOwnerId = isset($validated['cost_center_id'])
+            ? (int) $validated['cost_center_id']
+            : (isset($validated['unit_id']) ? (int) $validated['unit_id'] : null);
+
+        $costCenterName = match ($costCenterType) {
+            'all' => 'All Scopes',
+            'organization' => $this->resolveOrganizationCostCenter($organization, $costCenterOwnerId),
+            'unit' => $this->resolveUnitCostCenter($organization, $costCenterOwnerId),
+            'committee' => $this->resolveCommitteeCostCenter($organization, $costCenterOwnerId),
+        };
 
         $report = $trialBalance->generate(
             $organization,
             $scope,
             $validated['as_of_date'],
-            $unitId,
+            null,
+            $costCenterType,
+            $costCenterOwnerId,
         );
-
-        $unitName = $unitId === null
-            ? 'All Units'
-            : Unit::query()->where('organization_id', $organization->id)->findOrFail($unitId)->name;
 
         $pdf = Pdf::loadView('finance::livewire.reports.trial-balance-pdf', [
             'organization' => $organization,
             'report' => $report,
-            'unitName' => $unitName,
+            'costCenterName' => $costCenterName,
+            // Retain the old variable for any downstream customized PDF view.
+            'unitName' => $costCenterName,
             'generatedAt' => now(),
         ])->setPaper('a4', 'landscape');
 
         return $pdf->download('trial-balance-' . $validated['as_of_date'] . '.pdf');
+    }
+
+    private function resolveOrganizationCostCenter(Organization $organization, ?int $ownerId): string
+    {
+        abort_if($ownerId !== null && $ownerId !== (int) $organization->id, 404);
+
+        return 'Central / Organization';
+    }
+
+    private function resolveUnitCostCenter(Organization $organization, ?int $ownerId): string
+    {
+        abort_if($ownerId === null, 422);
+
+        return Unit::query()
+            ->where('organization_id', $organization->id)
+            ->findOrFail($ownerId)
+            ->name;
+    }
+
+    private function resolveCommitteeCostCenter(Organization $organization, ?int $ownerId): string
+    {
+        abort_if($ownerId === null, 422);
+
+        return Committee::query()
+            ->where('organization_id', $organization->id)
+            ->findOrFail($ownerId)
+            ->name;
     }
 }
