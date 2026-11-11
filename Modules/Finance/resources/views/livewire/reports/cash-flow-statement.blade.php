@@ -48,7 +48,19 @@
                     – {{ \Illuminate\Support\Carbon::parse($report['end_date'])->format('d M Y') }}
                 </p>
             </div>
-            <span class="finance-cash-flow__report-tag">DIRECT METHOD</span>
+            <div class="finance-cash-flow__report-actions">
+                <span class="finance-cash-flow__report-tag">DIRECT METHOD</span>
+                <a
+                    class="finance-cash-flow__export-button"
+                    href="{{ route('finance.reports.cash-flow-statement.pdf', array_filter([
+                        'start_date' => $report['start_date'],
+                        'end_date' => $report['end_date'],
+                        'unit_id' => $unitId,
+                    ], fn ($value) => $value !== null && $value !== '')) }}"
+                    target="_blank"
+                    rel="noopener"
+                >Export PDF</a>
+            </div>
         </div>
 
         <div class="finance-cash-flow__opening">
@@ -143,11 +155,19 @@
     }
     .finance-cash-flow__report-header h2 { margin: 0; color: var(--fcf-ink); font-size: 17px; font-weight: 750; }
     .finance-cash-flow__report-header p { margin: 5px 0 0; color: var(--fcf-muted); font-size: 12px; }
+    .finance-cash-flow__report-actions { display: flex; align-items: center; gap: 10px; }
     .finance-cash-flow__report-tag {
         padding: 5px 9px; border: 1px solid var(--fcf-line); border-radius: 999px;
         background: var(--fcf-canvas); color: var(--fcf-muted); font-size: 9px;
         font-weight: 800; letter-spacing: .08em; white-space: nowrap;
     }
+    .finance-cash-flow__export-button {
+        display: inline-flex; align-items: center; justify-content: center; min-height: 34px;
+        padding: 7px 12px; border: 1px solid var(--fcf-brand); border-radius: 8px;
+        color: var(--fcf-brand); text-decoration: none; font-size: 12px; font-weight: 750;
+        white-space: nowrap;
+    }
+    .finance-cash-flow__export-button:hover { background: var(--fcf-canvas); }
     .finance-cash-flow__opening,
     .finance-cash-flow__total-row {
         display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -177,6 +197,7 @@
     @media (max-width: 760px) {
         .finance-cash-flow__filter-grid { grid-template-columns: 1fr; }
         .finance-cash-flow__report-header { align-items: flex-start; }
+        .finance-cash-flow__report-actions { flex-wrap: wrap; justify-content: flex-end; }
         .finance-cash-flow__activity { align-items: flex-start; }
     }
 </style>
