@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
 use Modules\Finance\Enums\FinanceJournalStatus;
 use Modules\Finance\Models\FinanceScope;
 
@@ -36,19 +37,59 @@ class FinanceIncomeStatementService
         string $startDate,
         string $endDate,
         ?int $unitId = null,
+        string $costCenterType = 'all',
+        ?int $costCenterOwnerId = null,
     ): array {
         $this->assertScope($organization, $scope);
         $this->assertDateRange($startDate, $endDate);
 
-        if ($unitId !== null && ! Unit::query()
-            ->whereKey($unitId)
-            ->where('organization_id', $organization->id)
-            ->exists()) {
-            throw new InvalidArgumentException('The selected unit does not belong to the organization.');
+        // Preserve the original fifth-argument unit filter and its validation
+        // message for existing callers.
+        $legacyUnitFilter = $unitId !== null
+            && $costCenterType === 'all'
+            && $costCenterOwnerId === null;
+
+        if ($legacyUnitFilter) {
+            $costCenterType = 'unit';
+            $costCenterOwnerId = $unitId;
+        }
+
+        if (! in_array($costCenterType, ['all', 'organization', 'unit', 'committee'], true)) {
+            throw new InvalidArgumentException('The selected cost center type is invalid.');
+        }
+
+        if ($costCenterType === 'all' && $costCenterOwnerId !== null) {
+            throw new InvalidArgumentException('All scopes cannot have a cost center owner.');
+        }
+
+        if ($costCenterType === 'organization') {
+            $costCenterOwnerId ??= (int) $organization->id;
+            if ($costCenterOwnerId !== (int) $organization->id) {
+                throw new InvalidArgumentException('The selected cost center owner is invalid or belongs to another organization.');
+            }
+        } elseif ($costCenterType === 'unit') {
+            if ($costCenterOwnerId === null || ! Unit::query()
+                ->whereKey($costCenterOwnerId)
+                ->where('organization_id', $organization->id)
+                ->exists()) {
+                throw new InvalidArgumentException(
+                    $legacyUnitFilter
+                        ? 'The selected unit does not belong to the organization.'
+                        : 'The selected cost center owner is invalid or belongs to another organization.'
+                );
+            }
+        } elseif ($costCenterType === 'committee') {
+            if ($costCenterOwnerId === null || ! Committee::query()
+                ->whereKey($costCenterOwnerId)
+                ->where('organization_id', $organization->id)
+                ->exists()) {
+                throw new InvalidArgumentException('The selected cost center owner is invalid or belongs to another organization.');
+            }
         }
 
         $activity = DB::table('finance_journal_lines as lines')
             ->join('finance_journals as journals', 'journals.id', '=', 'lines.journal_id')
+            ->leftJoin('finance_cost_centers as cost_centers', 'cost_centers.id', '=', 'lines.finance_cost_center_id')
             ->select('lines.finance_account_id')
             ->selectRaw('COALESCE(SUM(lines.debit), 0) as total_debit')
             ->selectRaw('COALESCE(SUM(lines.credit), 0) as total_credit')
@@ -58,7 +99,32 @@ class FinanceIncomeStatementService
             ->where('journals.status', FinanceJournalStatus::POSTED->value)
             ->whereDate('journals.transaction_date', '>=', $startDate)
             ->whereDate('journals.transaction_date', '<=', $endDate)
-            ->when($unitId !== null, fn ($query) => $query->where('journals.unit_id', $unitId))
+            ->when($costCenterType === 'organization', function ($query) use ($organization): void {
+                $query->where(function ($filter) use ($organization): void {
+                    $filter->where(function ($explicit) use ($organization): void {
+                        $explicit->where('cost_centers.owner_type', 'organization')
+                            ->where('cost_centers.owner_id', $organization->id);
+                    })->orWhere(function ($legacy): void {
+                        $legacy->whereNull('lines.finance_cost_center_id')
+                            ->whereNull('journals.unit_id');
+                    });
+                });
+            })
+            ->when($costCenterType === 'unit', function ($query) use ($costCenterOwnerId): void {
+                $query->where(function ($filter) use ($costCenterOwnerId): void {
+                    $filter->where(function ($explicit) use ($costCenterOwnerId): void {
+                        $explicit->where('cost_centers.owner_type', 'unit')
+                            ->where('cost_centers.owner_id', $costCenterOwnerId);
+                    })->orWhere(function ($legacy) use ($costCenterOwnerId): void {
+                        $legacy->whereNull('lines.finance_cost_center_id')
+                            ->where('journals.unit_id', $costCenterOwnerId);
+                    });
+                });
+            })
+            ->when($costCenterType === 'committee', function ($query) use ($costCenterOwnerId): void {
+                $query->where('cost_centers.owner_type', 'committee')
+                    ->where('cost_centers.owner_id', $costCenterOwnerId);
+            })
             ->groupBy('lines.finance_account_id');
 
         $accounts = DB::table('finance_accounts as accounts')
@@ -116,7 +182,9 @@ class FinanceIncomeStatementService
         return [
             'start_date' => $startDate,
             'end_date' => $endDate,
-            'unit_id' => $unitId,
+            'unit_id' => $costCenterType === 'unit' ? $costCenterOwnerId : null,
+            'cost_center_type' => $costCenterType,
+            'cost_center_owner_id' => $costCenterOwnerId,
             'income_accounts' => $incomeRows,
             'expense_accounts' => $expenseRows,
             'total_income' => $totalIncome,
