@@ -4,6 +4,7 @@ namespace Modules\Finance\Livewire;
 
 use App\Support\Organization\CurrentOrganization;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Livewire\Component;
@@ -107,10 +108,14 @@ class FinanceTrialBalanceReport extends Component
             ->orderBy('name')
             ->get();
 
-        $committees = Committee::query()
-            ->where('organization_id', $this->organization->id)
-            ->orderBy('name')
-            ->get();
+        $hasCommitteeTable = Schema::hasTable('committees');
+        $committees = collect();
+        if ($this->costCenterType === 'committee' && $hasCommitteeTable) {
+            $committees = Committee::query()
+                ->where('organization_id', $this->organization->id)
+                ->orderBy('name')
+                ->get();
+        }
 
         if ($this->costCenterType === 'unit' && $this->costCenterOwnerId !== null) {
             abort_unless($units->contains('id', $this->costCenterOwnerId), 404);
@@ -120,24 +125,37 @@ class FinanceTrialBalanceReport extends Component
             $this->costCenterOwnerId = (int) $this->organization->id;
         }
 
-        // A type may be selected before its owner. Until then, show all scopes.
-        $effectiveType = in_array($this->costCenterType, ['unit', 'committee'], true)
-            && $this->costCenterOwnerId === null ? 'all' : $this->costCenterType;
+        $filterRequired = in_array($this->costCenterType, ['unit', 'committee'], true)
+            && $this->costCenterOwnerId === null;
 
-        $report = $trialBalance->generate(
-            $this->organization,
-            $scope,
-            $this->asOfDate,
-            null,
-            $effectiveType,
-            $effectiveType === 'all' ? null : $this->costCenterOwnerId,
-        );
+        $report = $filterRequired
+            ? [
+                'as_of_date' => $this->asOfDate,
+                'unit_id' => null,
+                'cost_center_type' => $this->costCenterType,
+                'cost_center_owner_id' => null,
+                'accounts' => [],
+                'debit_total' => '0.0000',
+                'credit_total' => '0.0000',
+                'difference' => '0.0000',
+                'filter_required' => true,
+            ]
+            : $trialBalance->generate(
+                $this->organization,
+                $scope,
+                $this->asOfDate,
+                null,
+                $this->costCenterType,
+                $this->costCenterOwnerId,
+            );
 
         return view('finance::livewire.reports.trial-balance', [
             'periods' => $periods,
             'units' => $units,
             'committees' => $committees,
+            'hasCommitteeTable' => $hasCommitteeTable,
             'report' => $report,
+            'filterRequired' => $filterRequired,
         ])->layout('core::layouts.organization-admin', [
             'pageTitle' => 'Trial Balance',
             'layoutOrganization' => $this->organization,

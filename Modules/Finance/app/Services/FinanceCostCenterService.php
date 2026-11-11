@@ -3,6 +3,7 @@
 namespace Modules\Finance\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
 use Modules\Committee\Models\Committee;
@@ -34,6 +35,10 @@ class FinanceCostCenterService
             }
 
             return $this->central($organization);
+        }
+
+        if ($type === 'committee' && ! Schema::hasTable('committees')) {
+            throw new \InvalidArgumentException('Committee cost centers are unavailable.');
         }
 
         $owner = match ($type) {

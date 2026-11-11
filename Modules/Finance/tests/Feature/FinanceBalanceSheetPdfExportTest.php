@@ -108,6 +108,20 @@ class FinanceBalanceSheetPdfExportTest extends TestCase
             ->assertUnprocessable();
     }
 
+
+    public function test_pdf_export_accepts_new_cost_center_parameters(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $unit = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $this->postJournal('2026-04-10', $this->cash, $this->equity, '75.0000', $unit->id);
+
+        $this->actingAs($user)->get($this->pdfUrl([
+            'as_of_date' => '2026-06-30',
+            'cost_center_type' => 'unit',
+            'cost_center_owner_id' => $unit->id,
+        ]))->assertOk()->assertHeader('content-type', 'application/pdf');
+    }
+
     public function test_pdf_export_rejects_a_unit_from_another_organization(): void
     {
         $user = $this->authorizeUser(['finance.report.view']);

@@ -104,6 +104,24 @@ class FinanceCashFlowStatementPdfExportTest extends TestCase
         $this->assertStringContainsString('2026-04-30', $response->headers->get('content-disposition', ''));
     }
 
+
+    public function test_pdf_export_accepts_new_cost_center_parameters(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $unit = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $this->postJournal('2026-04-10', [
+            $this->debit($this->cash->id, '75.0000'),
+            $this->credit($this->income->id, '75.0000'),
+        ], $unit->id);
+
+        $this->actingAs($user)->get($this->pdfUrl([
+            'start_date' => '2026-04-01',
+            'end_date' => '2026-04-30',
+            'cost_center_type' => 'unit',
+            'cost_center_owner_id' => $unit->id,
+        ]))->assertOk()->assertHeader('content-type', 'application/pdf');
+    }
+
     public function test_user_without_report_permission_cannot_download_cash_flow_statement_pdf(): void
     {
         $user = $this->authorizeUser(['finance.journal.view']);

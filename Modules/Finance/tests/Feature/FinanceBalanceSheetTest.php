@@ -10,6 +10,7 @@ use Modules\Finance\Enums\FinanceJournalStatus;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournal;
 use Modules\Finance\Services\FinanceAccountProvisioningService;
+use Modules\Finance\Services\FinanceCostCenterService;
 use Modules\Finance\Services\FinanceJournalService;
 use Modules\Finance\Services\FinancePeriodService;
 use Modules\Finance\Services\FinanceScopeService;
@@ -320,4 +321,53 @@ class FinanceBalanceSheetTest extends TestCase
             '2026-12-31',
         );
     }
+
+    public function test_balance_sheet_filters_explicit_central_and_unit_cost_centres(): void
+    {
+        $unitA = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $unitB = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $centers = app(FinanceCostCenterService::class);
+
+        $central = $centers->resolve($this->organization, 'organization', $this->organization->id);
+        $unitCenterA = $centers->resolve($this->organization, 'unit', $unitA->id);
+        $unitCenterB = $centers->resolve($this->organization, 'unit', $unitB->id);
+
+        foreach ([
+            [$central, '10.0000', 'Central capital'],
+            [$unitCenterA, '20.0000', 'Unit A capital'],
+            [$unitCenterB, '30.0000', 'Unit B capital'],
+        ] as [$center, $amount, $description]) {
+            app(FinanceJournalService::class)->post(
+                $this->organization,
+                $this->scope,
+                $this->period,
+                [
+                    'transaction_date' => '2026-05-01',
+                    'description' => $description,
+                    'lines' => [
+                        ['finance_account_id' => $this->cash->id, 'debit' => $amount, 'finance_cost_center_id' => $center->id],
+                        ['finance_account_id' => $this->equity->id, 'credit' => $amount, 'finance_cost_center_id' => $center->id],
+                    ],
+                ],
+            );
+        }
+
+        $unitReport = app(FinanceBalanceSheetService::class)->generate(
+            $this->organization, $this->scope, '2026-12-31', null, 'unit', $unitA->id,
+        );
+        $centralReport = app(FinanceBalanceSheetService::class)->generate(
+            $this->organization, $this->scope, '2026-12-31', null, 'organization', $this->organization->id,
+        );
+        $allReport = app(FinanceBalanceSheetService::class)->generate(
+            $this->organization, $this->scope, '2026-12-31',
+        );
+
+        $this->assertSame('20.0000', $unitReport['total_assets']);
+        $this->assertSame('20.0000', $unitReport['total_equity']);
+        $this->assertSame('10.0000', $centralReport['total_assets']);
+        $this->assertSame('10.0000', $centralReport['total_equity']);
+        $this->assertSame('60.0000', $allReport['total_assets']);
+        $this->assertSame('60.0000', $allReport['total_equity']);
+    }
+
 }

@@ -37,7 +37,7 @@
             <td><strong>To:</strong> {{ \Illuminate\Support\Carbon::parse($report['end_date'])->format('d M Y') }}</td>
         </tr>
         <tr>
-            <td><strong>Unit:</strong> {{ $unitName }}</td>
+            <td><strong>Cost centre:</strong> {{ $costCenterName ?? $unitName }}</td>
             <td><strong>Generated:</strong> {{ $generatedAt->format('d M Y H:i') }}</td>
         </tr>
     </table>

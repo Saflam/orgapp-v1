@@ -6,9 +6,11 @@ use App\Support\Organization\CurrentOrganization;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
 use Modules\Core\Services\AuthorizationService;
 use Modules\Finance\Services\FinanceBalanceSheetService;
 use Modules\Finance\Services\FinanceScopeService;
@@ -38,7 +40,10 @@ class FinanceBalanceSheetPdfController
 
         $validator = Validator::make($request->query(), [
             'as_of_date' => ['required', 'date_format:Y-m-d'],
-            'unit_id' => ['nullable', 'integer'],
+            'cost_center_type' => ['nullable', 'in:all,organization,unit,committee'],
+            'cost_center_owner_id' => ['nullable', 'integer', 'min:1'],
+            // Backward compatibility for older report links.
+            'unit_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         if ($validator->fails()) {
@@ -47,29 +52,49 @@ class FinanceBalanceSheetPdfController
 
         $validated = $validator->validated();
         $scope = $scopes->organizationScope($organization);
-        $unitId = isset($validated['unit_id']) ? (int) $validated['unit_id'] : null;
+        $costCenterType = $validated['cost_center_type']
+            ?? (! empty($validated['unit_id']) ? 'unit' : 'all');
+        $ownerId = isset($validated['cost_center_owner_id'])
+            ? (int) $validated['cost_center_owner_id']
+            : (isset($validated['unit_id']) ? (int) $validated['unit_id'] : null);
 
-        $unitName = 'All Units';
-
-        if ($unitId !== null) {
-            $unit = Unit::query()
+        if ($costCenterType === 'organization') {
+            abort_if($ownerId !== null && $ownerId !== (int) $organization->id, 404);
+            $ownerId = (int) $organization->id;
+            $costCenterName = 'Central / Organization';
+        } elseif ($costCenterType === 'unit') {
+            abort_if($ownerId === null, 422);
+            $costCenterName = Unit::query()
                 ->where('organization_id', $organization->id)
-                ->findOrFail($unitId);
-
-            $unitName = $unit->name;
+                ->whereKey($ownerId)
+                ->value('name');
+            abort_if($costCenterName === null, 404);
+        } elseif ($costCenterType === 'committee') {
+            abort_if($ownerId === null || ! Schema::hasTable('committees'), 404);
+            $costCenterName = Committee::query()
+                ->where('organization_id', $organization->id)
+                ->whereKey($ownerId)
+                ->value('name');
+            abort_if($costCenterName === null, 404);
+        } else {
+            $ownerId = null;
+            $costCenterName = 'All Cost Centres (All Units)';
         }
 
         $report = $balanceSheet->generate(
             $organization,
             $scope,
             $validated['as_of_date'],
-            $unitId,
+            null,
+            $costCenterType,
+            $ownerId,
         );
 
         $pdf = Pdf::loadView('finance::livewire.reports.balance-sheet-pdf', [
             'organization' => $organization,
             'report' => $report,
-            'unitName' => $unitName,
+            'costCenterName' => $costCenterName,
+            'unitName' => $costCenterName,
             'generatedAt' => now(),
         ])->setPaper('a4', 'portrait');
 

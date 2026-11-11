@@ -4,9 +4,11 @@ namespace Modules\Finance\Services;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
 use Modules\Finance\Enums\FinanceJournalStatus;
 use Modules\Finance\Models\FinanceScope;
 
@@ -35,16 +37,27 @@ class FinanceCashFlowStatementService
         string $startDate,
         string $endDate,
         ?int $unitId = null,
+        string $costCenterType = 'all',
+        ?int $costCenterOwnerId = null,
     ): array {
         $this->assertScope($organization, $scope);
         $this->assertDateRange($startDate, $endDate);
 
-        if ($unitId !== null && ! Unit::query()
-            ->whereKey($unitId)
-            ->where('organization_id', $organization->id)
-            ->exists()) {
-            throw new InvalidArgumentException('The selected unit does not belong to the organization.');
+        // Keep the original fifth argument working for existing callers.
+        $legacyUnitFilter = $unitId !== null
+            && $costCenterType === 'all'
+            && $costCenterOwnerId === null;
+
+        if ($legacyUnitFilter) {
+            $costCenterType = 'unit';
+            $costCenterOwnerId = $unitId;
         }
+
+        if ($costCenterType === 'organization') {
+            $costCenterOwnerId ??= (int) $organization->id;
+        }
+
+        $this->assertCostCenter($organization, $costCenterType, $costCenterOwnerId);
 
         $cashAccountIds = DB::table('finance_accounts')
             ->where('organization_id', $organization->id)
@@ -59,10 +72,8 @@ class FinanceCashFlowStatementService
         ];
 
         if ($cashAccountIds->isNotEmpty()) {
-            // In a balanced journal, the signed credit-minus-debit movement
-            // on non-cash counterpart lines equals the cash debit-minus-credit
-            // movement. Cash-to-cash transfers have no non-cash counterpart
-            // and therefore contribute nothing to the three categories.
+            // Classify the non-cash counterpart lines. Cost-centre selection is
+            // line-level; this preserves split journals across different centres.
             $cashJournalIds = DB::table('finance_journals as cash_journals')
                 ->select('cash_journals.id')
                 ->where('cash_journals.organization_id', $organization->id)
@@ -70,7 +81,6 @@ class FinanceCashFlowStatementService
                 ->where('cash_journals.status', FinanceJournalStatus::POSTED->value)
                 ->whereDate('cash_journals.transaction_date', '>=', $startDate)
                 ->whereDate('cash_journals.transaction_date', '<=', $endDate)
-                ->when($unitId !== null, fn ($query) => $query->where('cash_journals.unit_id', $unitId))
                 ->whereExists(function ($query) use ($cashAccountIds): void {
                     $query->selectRaw('1')
                         ->from('finance_journal_lines as cash_lines')
@@ -78,18 +88,53 @@ class FinanceCashFlowStatementService
                         ->whereIn('cash_lines.finance_account_id', $cashAccountIds);
                 });
 
+            if ($costCenterType !== 'all') {
+                $cashJournalIds->whereExists(function ($query) use (
+                    $cashAccountIds,
+                    $organization,
+                    $costCenterType,
+                    $costCenterOwnerId,
+                ): void {
+                    $query->selectRaw('1')
+                        ->from('finance_journal_lines as scoped_lines')
+                        ->leftJoin('finance_cost_centers as scoped_centers', 'scoped_centers.id', '=', 'scoped_lines.finance_cost_center_id')
+                        ->whereColumn('scoped_lines.journal_id', 'cash_journals.id')
+                        ->whereNotIn('scoped_lines.finance_account_id', $cashAccountIds);
+
+                    $this->applyCostCenterFilter(
+                        $query,
+                        $organization,
+                        $costCenterType,
+                        $costCenterOwnerId,
+                        'scoped_lines',
+                        'cash_journals',
+                        'scoped_centers',
+                    );
+                });
+            }
+
             $hasUnclassifiedCounterpart = DB::table('finance_journal_lines as counterpart_lines')
                 ->join('finance_journals as counterpart_journals', 'counterpart_journals.id', '=', 'counterpart_lines.journal_id')
                 ->join('finance_accounts as counterpart_accounts', 'counterpart_accounts.id', '=', 'counterpart_lines.finance_account_id')
+                ->leftJoin('finance_cost_centers as counterpart_centers', 'counterpart_centers.id', '=', 'counterpart_lines.finance_cost_center_id')
                 ->whereIn('counterpart_journals.id', $cashJournalIds)
                 ->whereNotIn('counterpart_lines.finance_account_id', $cashAccountIds)
                 ->where(function ($query): void {
                     $query->whereNull('counterpart_accounts.cash_flow_category')
                         ->orWhereNotIn('counterpart_accounts.cash_flow_category', ['operating', 'investing', 'financing']);
-                })
-                ->exists();
+                });
 
-            if ($hasUnclassifiedCounterpart) {
+            $this->applyCostCenterFilter(
+                $hasUnclassifiedCounterpart,
+                $organization,
+                $costCenterType,
+                $costCenterOwnerId,
+                'counterpart_lines',
+                'counterpart_journals',
+                'counterpart_centers',
+            );
+
+            if ($hasUnclassifiedCounterpart->exists()) {
                 throw new InvalidArgumentException(
                     'Every non-cash account in a cash journal must have an operating, investing, or financing cash flow category.'
                 );
@@ -98,15 +143,24 @@ class FinanceCashFlowStatementService
             $movements = DB::table('finance_journal_lines as lines')
                 ->join('finance_journals as journals', 'journals.id', '=', 'lines.journal_id')
                 ->join('finance_accounts as accounts', 'accounts.id', '=', 'lines.finance_account_id')
+                ->leftJoin('finance_cost_centers as cost_centers', 'cost_centers.id', '=', 'lines.finance_cost_center_id')
                 ->whereIn('journals.id', $cashJournalIds)
                 ->where('journals.organization_id', $organization->id)
                 ->where('journals.finance_scope_id', $scope->id)
                 ->where('journals.status', FinanceJournalStatus::POSTED->value)
                 ->whereDate('journals.transaction_date', '>=', $startDate)
                 ->whereDate('journals.transaction_date', '<=', $endDate)
-                ->when($unitId !== null, fn ($query) => $query->where('journals.unit_id', $unitId))
                 ->whereNotIn('lines.finance_account_id', $cashAccountIds)
-                ->whereIn('accounts.cash_flow_category', ['operating', 'investing', 'financing'])
+                ->whereIn('accounts.cash_flow_category', ['operating', 'investing', 'financing']);
+
+            $this->applyCostCenterFilter(
+                $movements,
+                $organization,
+                $costCenterType,
+                $costCenterOwnerId,
+            );
+
+            $movements = $movements
                 ->select('accounts.cash_flow_category')
                 ->selectRaw('COALESCE(SUM(lines.credit), 0) as total_credit')
                 ->selectRaw('COALESCE(SUM(lines.debit), 0) as total_debit')
@@ -131,13 +185,16 @@ class FinanceCashFlowStatementService
             $scope,
             $cashAccountIds,
             $startDate,
-            $unitId,
+            $costCenterType,
+            $costCenterOwnerId,
         );
 
         return [
             'start_date' => $startDate,
             'end_date' => $endDate,
-            'unit_id' => $unitId,
+            'unit_id' => $costCenterType === 'unit' ? $costCenterOwnerId : null,
+            'cost_center_type' => $costCenterType,
+            'cost_center_owner_id' => $costCenterOwnerId,
             'operating_net_cash_flow' => $totals['operating'],
             'investing_net_cash_flow' => $totals['investing'],
             'financing_net_cash_flow' => $totals['financing'],
@@ -147,12 +204,94 @@ class FinanceCashFlowStatementService
         ];
     }
 
+    private function assertCostCenter(
+        Organization $organization,
+        string $type,
+        ?int $ownerId,
+    ): void {
+        if (! in_array($type, ['all', 'organization', 'unit', 'committee'], true)) {
+            throw new InvalidArgumentException('The selected cost center type is invalid.');
+        }
+
+        if ($type === 'all') {
+            if ($ownerId !== null) {
+                throw new InvalidArgumentException('All scopes cannot have a cost center owner.');
+            }
+
+            return;
+        }
+
+        if ($type === 'organization') {
+            if ($ownerId !== null && $ownerId !== (int) $organization->id) {
+                throw new InvalidArgumentException('The selected cost center owner is invalid or belongs to another organization.');
+            }
+
+            return;
+        }
+
+        if ($ownerId === null) {
+            throw new InvalidArgumentException('A cost center owner must be selected.');
+        }
+
+        if ($type === 'committee' && ! Schema::hasTable('committees')) {
+            throw new InvalidArgumentException('Committee cost centers are unavailable.');
+        }
+
+        $exists = $type === 'unit'
+            ? Unit::query()->whereKey($ownerId)->where('organization_id', $organization->id)->exists()
+            : Committee::query()->whereKey($ownerId)->where('organization_id', $organization->id)->exists();
+
+        if (! $exists) {
+            if ($type === 'unit') {
+                throw new InvalidArgumentException('The selected unit does not belong to the organization.');
+            }
+
+            throw new InvalidArgumentException('The selected cost center owner is invalid or belongs to another organization.');
+        }
+    }
+
+    private function applyCostCenterFilter(
+        $query,
+        Organization $organization,
+        string $type,
+        ?int $ownerId,
+        string $lineAlias = 'lines',
+        string $journalAlias = 'journals',
+        string $centerAlias = 'cost_centers',
+    ): void {
+        if ($type === 'organization') {
+            $query->where(function ($filter) use ($organization, $lineAlias, $journalAlias, $centerAlias): void {
+                $filter->where(function ($explicit) use ($organization, $centerAlias): void {
+                    $explicit->where($centerAlias . '.owner_type', 'organization')
+                        ->where($centerAlias . '.owner_id', $organization->id);
+                })->orWhere(function ($legacy) use ($lineAlias, $journalAlias): void {
+                    $legacy->whereNull($lineAlias . '.finance_cost_center_id')
+                        ->whereNull($journalAlias . '.unit_id');
+                });
+            });
+        } elseif ($type === 'unit') {
+            $query->where(function ($filter) use ($ownerId, $lineAlias, $journalAlias, $centerAlias): void {
+                $filter->where(function ($explicit) use ($ownerId, $centerAlias): void {
+                    $explicit->where($centerAlias . '.owner_type', 'unit')
+                        ->where($centerAlias . '.owner_id', $ownerId);
+                })->orWhere(function ($legacy) use ($ownerId, $lineAlias, $journalAlias): void {
+                    $legacy->whereNull($lineAlias . '.finance_cost_center_id')
+                        ->where($journalAlias . '.unit_id', $ownerId);
+                });
+            });
+        } elseif ($type === 'committee') {
+            $query->where($centerAlias . '.owner_type', 'committee')
+                ->where($centerAlias . '.owner_id', $ownerId);
+        }
+    }
+
     private function openingCashBalance(
         Organization $organization,
         FinanceScope $scope,
         $cashAccountIds,
         string $startDate,
-        ?int $unitId,
+        string $costCenterType,
+        ?int $costCenterOwnerId,
     ): string {
         if ($cashAccountIds->isEmpty()) {
             return '0.0000';
@@ -164,8 +303,17 @@ class FinanceCashFlowStatementService
             ->where('journals.finance_scope_id', $scope->id)
             ->where('journals.status', FinanceJournalStatus::POSTED->value)
             ->whereDate('journals.transaction_date', '<', $startDate)
-            ->when($unitId !== null, fn ($query) => $query->where('journals.unit_id', $unitId))
-            ->whereIn('lines.finance_account_id', $cashAccountIds)
+            ->leftJoin('finance_cost_centers as cost_centers', 'cost_centers.id', '=', 'lines.finance_cost_center_id')
+            ->whereIn('lines.finance_account_id', $cashAccountIds);
+
+        $this->applyCostCenterFilter(
+            $movement,
+            $organization,
+            $costCenterType,
+            $costCenterOwnerId,
+        );
+
+        $movement = $movement
             ->selectRaw('COALESCE(SUM(lines.debit), 0) as total_debit')
             ->selectRaw('COALESCE(SUM(lines.credit), 0) as total_credit')
             ->first();

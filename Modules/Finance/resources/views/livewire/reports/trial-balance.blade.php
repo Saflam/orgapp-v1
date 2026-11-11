@@ -32,7 +32,7 @@
             <div class="finance-trial-balance__field">
                 <label for="costCenterType">Cost center scope</label>
                 <select id="costCenterType" wire:model.live="costCenterType">
-                    <option value="all">All Scopes</option>
+                    <option value="all">All Scopes (All Cost Centres)</option>
                     <option value="organization">Central / Organization</option>
                     <option value="unit">Individual Units</option>
                     <option value="committee">Individual Committees</option>
@@ -59,6 +59,11 @@
         </div>
     </section>
 
+    @if ($filterRequired)
+        <div class="finance-trial-balance__filter-card" role="status">
+            Select a {{ $costCenterType === 'unit' ? 'unit' : 'committee' }} to generate this report.
+        </div>
+    @else
     <section class="finance-trial-balance__report-card">
         <div class="finance-trial-balance__report-header">
             <div>
@@ -72,6 +77,8 @@
                     href="{{ route('finance.reports.trial-balance.pdf', array_filter([
                         'as_of_date' => $report['as_of_date'],
                         'cost_center_type' => $this->costCenterType,
+                        'cost_center_owner_id' => $this->costCenterOwnerId,
+                        // Retain the original query parameter for older custom integrations.
                         'cost_center_id' => $this->costCenterOwnerId,
                     ], static fn ($value) => $value !== null)) }}"
                 >
@@ -135,6 +142,7 @@
             </table>
         </div>
     </section>
+    @endif
 </div>
 
 <style>

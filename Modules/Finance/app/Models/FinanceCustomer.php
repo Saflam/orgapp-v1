@@ -27,4 +27,5 @@ class FinanceCustomer extends Model
     }
 
     public function user(): BelongsTo { return $this->belongsTo(\App\Models\User::class); }
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(FinanceSalesInvoice::class, 'finance_customer_id'); }
 }

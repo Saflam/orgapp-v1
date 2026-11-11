@@ -29,6 +29,8 @@
     $canViewFinanceBalanceSheet = false;
     $canViewFinanceCashFlowStatement = false;
     $canViewFinanceReports = false;
+    $canViewFinanceReceivablesPayables = false;
+    $canViewFinanceParties = false;
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
@@ -82,6 +84,33 @@
             && $membershipAuthorization->can($layoutUser, 'finance.report.view', $membershipOrganizationContext);
         $canViewFinanceReports = $canViewFinanceTrialBalance || $canViewFinanceIncomeStatement
             || $canViewFinanceBalanceSheet || $canViewFinanceCashFlowStatement;
+        $canViewFinanceReceivablesPayables = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.receivables-payables')
+            && collect([
+                'finance.sales_invoice.view',
+                'finance.sales_invoice.manage',
+                'finance.purchase_bill.view',
+                'finance.purchase_bill.manage',
+                'finance.payment.view',
+                'finance.payment.manage',
+                'finance.aging.view',
+            ])->contains(fn (string $permission): bool => $membershipAuthorization->can(
+                $layoutUser,
+                $permission,
+                $membershipOrganizationContext,
+            ));
+        $canViewFinanceParties = $financeModuleEnabled
+            && \Illuminate\Support\Facades\Route::has('finance.parties')
+            && collect([
+                'finance.customer.view',
+                'finance.customer.manage',
+                'finance.supplier.view',
+                'finance.supplier.manage',
+            ])->contains(fn (string $permission): bool => $membershipAuthorization->can(
+                $layoutUser,
+                $permission,
+                $membershipOrganizationContext,
+            ));
         $canViewMembershipApplications = $membershipAuthorization->can(
             $layoutUser,
             'membership.application.view',
@@ -230,10 +259,10 @@
                         </div>
                     </details>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceReports): ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceAccounts || $canViewFinancePeriods || $canViewFinanceTaxes || $canViewFinanceJournals || $canViewFinanceSettlements || $canViewFinanceReceivablesPayables || $canViewFinanceParties || $canViewFinanceReports): ?>
                     <?php ($financeSettingsNavActive = request()->routeIs('finance.accounts', 'finance.periods', 'finance.taxes')); ?>
                     <?php ($reportsNavActive = request()->routeIs('finance.reports.*')); ?>
-                    <?php ($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals', 'finance.settlements') || $reportsNavActive); ?>
+                    <?php ($financeNavActive = $financeSettingsNavActive || request()->routeIs('finance.journals', 'finance.settlements', 'finance.receivables-payables', 'finance.parties') || $reportsNavActive); ?>
                     <details class="nav-group" <?php echo e($financeNavActive ? 'open' : ''); ?>>
                         <summary class="nav-group-toggle <?php echo e($financeNavActive ? 'active' : ''); ?>">
                             <span class="nav-icon" aria-hidden="true">₹</span><span>Finance</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -255,6 +284,16 @@
                                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
                             </details>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceReceivablesPayables): ?>
+                                <a class="nav-link <?php echo e(request()->routeIs('finance.receivables-payables') ? 'active' : ''); ?>" href="<?php echo e(route('finance.receivables-payables')); ?>">
+                                    <span class="nav-icon" aria-hidden="true">⇄</span><span>Receivables &amp; Payables</span>
+                                </a>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceParties): ?>
+                                <a class="nav-link <?php echo e(request()->routeIs('finance.parties') ? 'active' : ''); ?>" href="<?php echo e(route('finance.parties')); ?>">
+                                    <span class="nav-icon" aria-hidden="true">♙</span><span>Customers &amp; Suppliers</span>
+                                </a>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewFinanceJournals): ?>
                                 <a class="nav-link <?php echo e(request()->routeIs('finance.journals') ? 'active' : ''); ?>" href="<?php echo e(route('finance.journals')); ?>">
                                     <span class="nav-icon" aria-hidden="true">▤</span><span>Journal Entries</span>

@@ -3,6 +3,7 @@
 namespace Modules\Finance\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
@@ -71,7 +72,7 @@ class FinanceTrialBalanceService
                 ->exists()) {
                 throw new InvalidArgumentException('The selected unit does not belong to the organization.');
             }
-        } elseif ($costCenterOwnerId === null || ! Committee::query()
+        } elseif (! Schema::hasTable('committees') || $costCenterOwnerId === null || ! Committee::query()
             ->whereKey($costCenterOwnerId)
             ->where('organization_id', $organization->id)
             ->exists()) {

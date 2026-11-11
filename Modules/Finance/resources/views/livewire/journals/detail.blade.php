@@ -50,6 +50,7 @@
                         <th>#</th>
                         <th>Account code</th>
                         <th>Account name</th>
+                        <th>Cost centre</th>
                         <th>Description</th>
                         <th>Debit</th>
                         <th>Credit</th>
@@ -61,13 +62,14 @@
                             <td>{{ $loop->iteration }}</td>
                             <td>{{ $line->account?->code ?? '—' }}</td>
                             <td>{{ $line->account?->name ?? '—' }}</td>
+                            <td>{{ $line->costCenter?->name ?? '—' }}</td>
                             <td>{{ $line->description ?: '—' }}</td>
                             <td>{{ number_format((float) $line->debit, 4) }}</td>
                             <td>{{ number_format((float) $line->credit, 4) }}</td>
                         </tr>
                     @endforeach
                     <tr>
-                        <th colspan="4">Totals</th>
+                        <th colspan="5">Totals</th>
                         <th>{{ number_format($debitTotal, 4) }}</th>
                         <th>{{ number_format($creditTotal, 4) }}</th>
                     </tr>

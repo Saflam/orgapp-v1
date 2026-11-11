@@ -6,6 +6,7 @@ use App\Support\Organization\CurrentOrganization;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Livewire\Component;
+use Modules\Committee\Models\Committee;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
@@ -13,6 +14,7 @@ use Modules\Core\Services\AuthorizationService;
 use Modules\Finance\Models\FinancePeriod;
 use Modules\Finance\Services\FinanceIncomeStatementService;
 use Modules\Finance\Services\FinanceScopeService;
+use Illuminate\Support\Facades\Schema;
 
 class FinanceIncomeStatementReport extends Component
 {
@@ -21,6 +23,11 @@ class FinanceIncomeStatementReport extends Component
     public ?int $periodId = null;
     public string $startDate = '';
     public string $endDate = '';
+
+    public string $costCenterType = 'all';
+    public ?int $costCenterOwnerId = null;
+
+    // Retained for compatibility with existing callers and tests.
     public ?int $unitId = null;
 
     public function mount(
@@ -32,9 +39,8 @@ class FinanceIncomeStatementReport extends Component
 
         $this->ensureCanView($authorization);
 
-        $today = now()->toDateString();
         $this->startDate = now()->startOfYear()->toDateString();
-        $this->endDate = $today;
+        $this->endDate = now()->toDateString();
     }
 
     public function updatedPeriodId(FinanceScopeService $scopes): void
@@ -63,11 +69,41 @@ class FinanceIncomeStatementReport extends Component
         $this->periodId = null;
     }
 
+    public function updatedCostCenterType(): void
+    {
+        if (! in_array($this->costCenterType, ['all', 'organization', 'unit', 'committee'], true)) {
+            $this->costCenterType = 'all';
+        }
+
+        $this->costCenterOwnerId = $this->costCenterType === 'organization'
+            ? (int) $this->organization->id
+            : null;
+
+        $this->unitId = null;
+    }
+
+    public function updatedCostCenterOwnerId(): void
+    {
+        $this->unitId = $this->costCenterType === 'unit'
+            ? $this->costCenterOwnerId
+            : null;
+    }
+
     public function updatedUnitId(): void
     {
         if ($this->unitId === 0) {
             $this->unitId = null;
         }
+
+        if ($this->unitId === null) {
+            $this->costCenterType = 'all';
+            $this->costCenterOwnerId = null;
+
+            return;
+        }
+
+        $this->costCenterType = 'unit';
+        $this->costCenterOwnerId = $this->unitId;
     }
 
     public function render(
@@ -99,21 +135,63 @@ class FinanceIncomeStatementReport extends Component
             ->orderBy('name')
             ->get();
 
-        if ($this->unitId !== null) {
-            abort_unless($units->contains('id', $this->unitId), 404);
+        $hasCommitteeTable = Schema::hasTable('committees');
+        $committees = collect();
+
+        if ($this->costCenterType === 'committee' && $hasCommitteeTable) {
+            $committees = Committee::query()
+                ->where('organization_id', $this->organization->id)
+                ->orderBy('name')
+                ->get();
         }
 
-        $report = $incomeStatement->generate(
-            $this->organization,
-            $scope,
-            $this->startDate,
-            $this->endDate,
-            $this->unitId,
-        );
+        if ($this->costCenterType === 'organization') {
+            $this->costCenterOwnerId = (int) $this->organization->id;
+        }
+
+        if ($this->costCenterType === 'unit' && $this->costCenterOwnerId !== null) {
+            abort_unless($units->contains('id', $this->costCenterOwnerId), 404);
+            $this->unitId = $this->costCenterOwnerId;
+        }
+
+        if ($this->costCenterType === 'committee' && $this->costCenterOwnerId !== null) {
+            abort_unless($committees->contains('id', $this->costCenterOwnerId), 404);
+        }
+
+        $requiresOwner = in_array($this->costCenterType, ['unit', 'committee'], true)
+            && $this->costCenterOwnerId === null;
+
+        if ($requiresOwner) {
+            $report = [
+                'start_date' => $this->startDate,
+                'end_date' => $this->endDate,
+                'unit_id' => null,
+                'cost_center_type' => $this->costCenterType,
+                'cost_center_owner_id' => null,
+                'income_accounts' => [],
+                'expense_accounts' => [],
+                'total_income' => '0.0000',
+                'total_expenses' => '0.0000',
+                'net_surplus' => '0.0000',
+                'filter_required' => true,
+            ];
+        } else {
+            $report = $incomeStatement->generate(
+                $this->organization,
+                $scope,
+                $this->startDate,
+                $this->endDate,
+                null,
+                $this->costCenterType,
+                $this->costCenterOwnerId,
+            );
+        }
 
         return view('finance::livewire.reports.income-statement', [
             'periods' => $periods,
             'units' => $units,
+            'committees' => $committees,
+            'hasCommitteeTable' => $hasCommitteeTable,
             'report' => $report,
         ])->layout('core::layouts.organization-admin', [
             'pageTitle' => 'Income Statement',

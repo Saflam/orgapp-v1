@@ -45,6 +45,8 @@ class FinanceReportsSidebarNavigationTest extends TestCase
         $permissions = collect([
             'finance.account.view',
             'finance.report.view',
+            'finance.customer.view',
+            'finance.sales_invoice.view',
         ])->map(fn (string $code) => Permission::create([
             'module' => 'finance',
             'name' => str($code)->headline(),
@@ -64,7 +66,11 @@ class FinanceReportsSidebarNavigationTest extends TestCase
             ->assertSee('Reports')
             ->assertSee('Trial Balance')
             ->assertSee('Income Statement')
-            ->assertSee('Balance Sheet');
+            ->assertSee('Balance Sheet')
+            ->assertSee('Receivables & Payables')
+            ->assertSee(route('finance.receivables-payables', [], false))
+            ->assertSee('Customers & Suppliers')
+            ->assertSee(route('finance.parties', [], false));
 
         $document = new \DOMDocument();
         $previousLibxmlState = libxml_use_internal_errors(true);
@@ -94,5 +100,68 @@ class FinanceReportsSidebarNavigationTest extends TestCase
             $financeAncestors->length,
             'Reports must be nested inside the Finance sidebar group.'
         );
+
+        $receivablesLinks = $xpath->query(
+            '//a[contains(concat(" ", normalize-space(@class), " "), " nav-link ")][span[normalize-space(.)="Receivables & Payables"]]'
+        );
+        $this->assertSame(1, $receivablesLinks->length, 'Receivables & Payables sidebar link was not rendered.');
+
+        $receivablesFinanceAncestors = $xpath->query(
+            'ancestor::details[summary//span[normalize-space(.)="Finance"]]',
+            $receivablesLinks->item(0)
+        );
+        $this->assertSame(
+            1,
+            $receivablesFinanceAncestors->length,
+            'Receivables & Payables must be nested inside the Finance sidebar group.'
+        );
     }
+
+    public function test_receivables_and_payables_link_is_hidden_without_a_relevant_permission(): void
+    {
+        config([
+            'app.deployment_mode' => 'multi',
+            'app.organization_base_domain' => 'lvh.me',
+        ]);
+
+        $organization = Organization::factory()->create();
+        app(OrganizationModuleService::class)->enable($organization, 'Core');
+        app(OrganizationModuleService::class)->enable($organization, 'Member');
+        app(OrganizationModuleService::class)->enable($organization, 'Finance');
+
+        $user = User::factory()->create();
+        $membership = OrganizationMembership::create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
+
+        $role = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Finance Accounts Navigation Role',
+            'code' => 'finance_accounts_nav_' . Str::lower(Str::random(8)),
+        ]);
+
+        $permission = Permission::create([
+            'module' => 'finance',
+            'name' => 'View Chart of Accounts',
+            'code' => 'finance.account.view',
+        ]);
+
+        $role->permissions()->attach($permission->id);
+        app(RoleAssignmentService::class)->assign($membership, $role, $organization);
+
+        $url = 'http://' . $organization->slug . '.lvh.me:8000'
+            . route('finance.accounts', [], false);
+
+        $response = $this->actingAs($user)->get($url);
+
+        $response->assertOk()
+            ->assertSee('Finance')
+            ->assertDontSee('Receivables & Payables')
+            ->assertDontSee(route('finance.receivables-payables', [], false))
+            ->assertDontSee('Customers & Suppliers')
+            ->assertDontSee(route('finance.parties', [], false));
+    }
+
 }

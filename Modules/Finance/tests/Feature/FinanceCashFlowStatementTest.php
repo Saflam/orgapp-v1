@@ -9,6 +9,7 @@ use Modules\Core\Models\Unit;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournal;
 use Modules\Finance\Services\FinanceAccountProvisioningService;
+use Modules\Finance\Services\FinanceCostCenterService;
 use Modules\Finance\Services\FinanceCashFlowStatementService;
 use Modules\Finance\Services\FinanceJournalService;
 use Modules\Finance\Services\FinancePeriodService;
@@ -300,6 +301,43 @@ class FinanceCashFlowStatementTest extends TestCase
             '2026-01-01',
             '2026-12-31',
         );
+    }
+
+
+    public function test_cash_flow_statement_filters_explicit_cost_centres_and_opening_cash(): void
+    {
+        $unitA = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $unitB = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $centers = app(FinanceCostCenterService::class);
+        $unitCenterA = $centers->resolve($this->organization, 'unit', $unitA->id);
+        $unitCenterB = $centers->resolve($this->organization, 'unit', $unitB->id);
+
+        $this->postJournal('2026-01-10', 'Unit A opening receipt', [
+            array_merge($this->debit($this->cash->id, '15.0000'), ['finance_cost_center_id' => $unitCenterA->id]),
+            array_merge($this->credit($this->income->id, '15.0000'), ['finance_cost_center_id' => $unitCenterA->id]),
+        ]);
+        $this->postJournal('2026-03-10', 'Unit A period receipt', [
+            array_merge($this->debit($this->cash->id, '20.0000'), ['finance_cost_center_id' => $unitCenterA->id]),
+            array_merge($this->credit($this->income->id, '20.0000'), ['finance_cost_center_id' => $unitCenterA->id]),
+        ]);
+        $this->postJournal('2026-03-11', 'Unit B period receipt', [
+            array_merge($this->debit($this->cash->id, '30.0000'), ['finance_cost_center_id' => $unitCenterB->id]),
+            array_merge($this->credit($this->income->id, '30.0000'), ['finance_cost_center_id' => $unitCenterB->id]),
+        ]);
+
+        $unitAReport = app(FinanceCashFlowStatementService::class)->generate(
+            $this->organization, $this->scope, '2026-03-01', '2026-03-31', null, 'unit', $unitA->id,
+        );
+        $unitBReport = app(FinanceCashFlowStatementService::class)->generate(
+            $this->organization, $this->scope, '2026-03-01', '2026-03-31', null, 'unit', $unitB->id,
+        );
+
+        $this->assertSame('15.0000', $unitAReport['opening_cash_balance']);
+        $this->assertSame('20.0000', $unitAReport['operating_net_cash_flow']);
+        $this->assertSame('35.0000', $unitAReport['closing_cash_balance']);
+        $this->assertSame('0.0000', $unitBReport['opening_cash_balance']);
+        $this->assertSame('30.0000', $unitBReport['operating_net_cash_flow']);
+        $this->assertSame('30.0000', $unitBReport['closing_cash_balance']);
     }
 
 }

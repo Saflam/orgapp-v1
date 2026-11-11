@@ -83,6 +83,25 @@ class FinanceCashFlowStatementUiTest extends TestCase
             ->assertSee('Finance')->assertSee('Reports')->assertSee('Cash Flow Statement');
     }
 
+
+    public function test_unit_scope_requires_a_selected_unit_before_showing_cash_flow(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $unit = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $this->postJournal('2026-04-10', 'Unit receipt', [
+            $this->debit($this->cash->id, '4321.0000'),
+            $this->credit($this->income->id, '4321.0000'),
+        ], $unit->id);
+
+        $component = $this->reportScreen($user)
+            ->set('costCenterType', 'unit')
+            ->assertSee('Select a unit to generate this report.')
+            ->assertDontSee('4321.0000');
+
+        $component->set('costCenterOwnerId', $unit->id)
+            ->assertSee('4321.0000');
+    }
+
     public function test_user_without_report_permission_is_forbidden(): void
     {
         $user = $this->authorizeUser(['finance.journal.view']);

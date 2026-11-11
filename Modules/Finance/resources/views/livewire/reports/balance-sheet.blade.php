@@ -20,17 +20,42 @@
             </div>
 
             <div class="finance-balance-sheet__field">
-                <label for="unitId">Unit</label>
-                <select id="unitId" wire:model.live="unitId">
-                    <option value="">All Units</option>
-                    @foreach ($units as $unit)
-                        <option value="{{ $unit->id }}">{{ $unit->name }}</option>
-                    @endforeach
+                <label for="costCenterType">Cost centre scope</label>
+                <select id="costCenterType" wire:model.live="costCenterType">
+                    <option value="all">All Cost Centres (All Units)</option>
+                    <option value="organization">Central / Organization</option>
+                    <option value="unit">Unit</option>
+                    @if ($hasCommitteeTable)
+                        <option value="committee">Committee</option>
+                    @endif
                 </select>
             </div>
+
+            @if (in_array($costCenterType, ['unit', 'committee'], true))
+                <div class="finance-balance-sheet__field">
+                    <label for="costCenterOwnerId">{{ $costCenterType === 'unit' ? 'Unit' : 'Committee' }}</label>
+                    <select id="costCenterOwnerId" wire:model.live="costCenterOwnerId">
+                        <option value="">Select {{ $costCenterType === 'unit' ? 'unit' : 'committee' }}</option>
+                        @if ($costCenterType === 'unit')
+                            @foreach ($units as $unit)
+                                <option value="{{ $unit->id }}">{{ $unit->name }}</option>
+                            @endforeach
+                        @else
+                            @foreach ($committees as $committee)
+                                <option value="{{ $committee->id }}">{{ $committee->name }}</option>
+                            @endforeach
+                        @endif
+                    </select>
+                </div>
+            @endif
         </div>
     </section>
 
+    @if ($filterRequired)
+        <div class="finance-balance-sheet__filter-card" role="status">
+            Select a {{ $costCenterType === 'unit' ? 'unit' : 'committee' }} to generate this report.
+        </div>
+    @else
     <section class="finance-balance-sheet__report-card">
         <div class="finance-balance-sheet__report-header">
             <div>
@@ -43,7 +68,9 @@
                     class="finance-balance-sheet__export-button"
                     href="{{ route('finance.reports.balance-sheet.pdf', array_filter([
                         'as_of_date' => $report['as_of_date'],
-                        'unit_id' => $unitId,
+                        'cost_center_type' => $costCenterType,
+                        'cost_center_owner_id' => $costCenterOwnerId,
+                        'unit_id' => $costCenterType === 'unit' ? $costCenterOwnerId : null,
                     ], fn ($value) => $value !== null && $value !== '')) }}"
                     target="_blank"
                     rel="noopener"
@@ -114,6 +141,7 @@
             </p>
         </div>
     </section>
+    @endif
 </div>
 
 <style>

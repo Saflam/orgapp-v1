@@ -28,17 +28,42 @@
             </div>
 
             <div class="finance-cash-flow__field">
-                <label for="cashFlowUnitId">Unit</label>
-                <select id="cashFlowUnitId" wire:model.live="unitId">
-                    <option value="">All Units</option>
-                    @foreach ($units as $unit)
-                        <option value="{{ $unit->id }}">{{ $unit->name }}</option>
-                    @endforeach
+                <label for="cashFlowCostCenterType">Cost centre scope</label>
+                <select id="cashFlowCostCenterType" wire:model.live="costCenterType">
+                    <option value="all">All Cost Centres (All Units)</option>
+                    <option value="organization">Central / Organization</option>
+                    <option value="unit">Unit</option>
+                    @if ($hasCommitteeTable)
+                        <option value="committee">Committee</option>
+                    @endif
                 </select>
             </div>
+
+            @if (in_array($costCenterType, ['unit', 'committee'], true))
+                <div class="finance-cash-flow__field">
+                    <label for="cashFlowCostCenterOwnerId">{{ $costCenterType === 'unit' ? 'Unit' : 'Committee' }}</label>
+                    <select id="cashFlowCostCenterOwnerId" wire:model.live="costCenterOwnerId">
+                        <option value="">Select {{ $costCenterType === 'unit' ? 'unit' : 'committee' }}</option>
+                        @if ($costCenterType === 'unit')
+                            @foreach ($units as $unit)
+                                <option value="{{ $unit->id }}">{{ $unit->name }}</option>
+                            @endforeach
+                        @else
+                            @foreach ($committees as $committee)
+                                <option value="{{ $committee->id }}">{{ $committee->name }}</option>
+                            @endforeach
+                        @endif
+                    </select>
+                </div>
+            @endif
         </div>
     </section>
 
+    @if ($filterRequired)
+        <div class="finance-cash-flow__filter-card" role="status">
+            Select a {{ $costCenterType === 'unit' ? 'unit' : 'committee' }} to generate this report.
+        </div>
+    @else
     <section class="finance-cash-flow__report-card" aria-label="Cash flow report">
         <div class="finance-cash-flow__report-header">
             <div>
@@ -55,7 +80,9 @@
                     href="{{ route('finance.reports.cash-flow-statement.pdf', array_filter([
                         'start_date' => $report['start_date'],
                         'end_date' => $report['end_date'],
-                        'unit_id' => $unitId,
+                        'cost_center_type' => $costCenterType,
+                        'cost_center_owner_id' => $costCenterOwnerId,
+                        'unit_id' => $costCenterType === 'unit' ? $costCenterOwnerId : null,
                     ], fn ($value) => $value !== null && $value !== '')) }}"
                     target="_blank"
                     rel="noopener"
@@ -105,6 +132,7 @@
             </div>
         </div>
     </section>
+    @endif
 
     <p class="finance-cash-flow__note">
         Only posted journals affecting configured cash or bank accounts are included.

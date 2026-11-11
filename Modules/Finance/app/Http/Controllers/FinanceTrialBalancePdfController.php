@@ -6,6 +6,7 @@ use App\Support\Organization\CurrentOrganization;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
 use Modules\Committee\Models\Committee;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
@@ -45,6 +46,7 @@ class FinanceTrialBalancePdfController
             'period_id' => ['nullable', 'integer'],
             'cost_center_type' => ['nullable', 'string', 'in:all,organization,unit,committee'],
             'cost_center_id' => ['nullable', 'integer'],
+            'cost_center_owner_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         if ($validator->fails()) {
@@ -68,12 +70,14 @@ class FinanceTrialBalancePdfController
         $costCenterType = $validated['cost_center_type']
             ?? (isset($validated['unit_id']) ? 'unit' : 'all');
 
-        $costCenterOwnerId = isset($validated['cost_center_id'])
-            ? (int) $validated['cost_center_id']
-            : (isset($validated['unit_id']) ? (int) $validated['unit_id'] : null);
+        $costCenterOwnerId = isset($validated['cost_center_owner_id'])
+            ? (int) $validated['cost_center_owner_id']
+            : (isset($validated['cost_center_id'])
+                ? (int) $validated['cost_center_id']
+                : (isset($validated['unit_id']) ? (int) $validated['unit_id'] : null));
 
         $costCenterName = match ($costCenterType) {
-            'all' => 'All Scopes',
+            'all' => 'All Cost Centres (All Units)',
             'organization' => $this->resolveOrganizationCostCenter($organization, $costCenterOwnerId),
             'unit' => $this->resolveUnitCostCenter($organization, $costCenterOwnerId),
             'committee' => $this->resolveCommitteeCostCenter($organization, $costCenterOwnerId),
@@ -120,6 +124,8 @@ class FinanceTrialBalancePdfController
     private function resolveCommitteeCostCenter(Organization $organization, ?int $ownerId): string
     {
         abort_if($ownerId === null, 422);
+
+        abort_unless(Schema::hasTable('committees'), 404);
 
         return Committee::query()
             ->where('organization_id', $organization->id)

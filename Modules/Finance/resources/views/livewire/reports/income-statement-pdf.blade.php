@@ -36,7 +36,7 @@
         <tr>
             <td><strong>From:</strong> {{ \Illuminate\Support\Carbon::parse($report['start_date'])->format('d M Y') }}</td>
             <td><strong>To:</strong> {{ \Illuminate\Support\Carbon::parse($report['end_date'])->format('d M Y') }}</td>
-            <td><strong>Unit:</strong> {{ $unitName }}</td>
+            <td><strong>Cost Centre:</strong> {{ $costCenterName ?? $unitName ?? 'All Cost Centres' }}</td>
             <td><strong>Generated:</strong> {{ $generatedAt->format('d M Y H:i') }}</td>
         </tr>
     </table>

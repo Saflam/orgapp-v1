@@ -4,9 +4,11 @@ namespace Modules\Finance\Services;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
+use Modules\Committee\Models\Committee;
 use Modules\Finance\Enums\FinanceJournalStatus;
 use Modules\Finance\Models\FinanceScope;
 
@@ -38,19 +40,30 @@ class FinanceBalanceSheetService
         FinanceScope $scope,
         string $asOfDate,
         ?int $unitId = null,
+        string $costCenterType = 'all',
+        ?int $costCenterOwnerId = null,
     ): array {
         $this->assertScope($organization, $scope);
         $this->assertDate($asOfDate);
 
-        if ($unitId !== null && ! Unit::query()
-            ->whereKey($unitId)
-            ->where('organization_id', $organization->id)
-            ->exists()) {
-            throw new InvalidArgumentException('The selected unit does not belong to the organization.');
+        $legacyUnitFilter = $unitId !== null
+            && $costCenterType === 'all'
+            && $costCenterOwnerId === null;
+
+        if ($legacyUnitFilter) {
+            $costCenterType = 'unit';
+            $costCenterOwnerId = $unitId;
         }
+
+        if ($costCenterType === 'organization') {
+            $costCenterOwnerId ??= (int) $organization->id;
+        }
+
+        $this->assertCostCenter($organization, $costCenterType, $costCenterOwnerId);
 
         $activity = DB::table('finance_journal_lines as lines')
             ->join('finance_journals as journals', 'journals.id', '=', 'lines.journal_id')
+            ->leftJoin('finance_cost_centers as cost_centers', 'cost_centers.id', '=', 'lines.finance_cost_center_id')
             ->select('lines.finance_account_id')
             ->selectRaw('COALESCE(SUM(lines.debit), 0) as total_debit')
             ->selectRaw('COALESCE(SUM(lines.credit), 0) as total_credit')
@@ -58,9 +71,16 @@ class FinanceBalanceSheetService
             ->where('journals.organization_id', $organization->id)
             ->where('journals.finance_scope_id', $scope->id)
             ->where('journals.status', FinanceJournalStatus::POSTED->value)
-            ->whereDate('journals.transaction_date', '<=', $asOfDate)
-            ->when($unitId !== null, fn ($query) => $query->where('journals.unit_id', $unitId))
-            ->groupBy('lines.finance_account_id');
+            ->whereDate('journals.transaction_date', '<=', $asOfDate);
+
+        $this->applyCostCenterFilter(
+            $activity,
+            $organization,
+            $costCenterType,
+            $costCenterOwnerId,
+        );
+
+        $activity->groupBy('lines.finance_account_id');
 
         $accounts = DB::table('finance_accounts as accounts')
             ->leftJoinSub($activity, 'activity', function ($join): void {
@@ -142,7 +162,9 @@ class FinanceBalanceSheetService
 
         return [
             'as_of_date' => $asOfDate,
-            'unit_id' => $unitId,
+            'unit_id' => $costCenterType === 'unit' ? $costCenterOwnerId : null,
+            'cost_center_type' => $costCenterType,
+            'cost_center_owner_id' => $costCenterOwnerId,
             'asset_accounts' => $assetRows,
             'liability_accounts' => $liabilityRows,
             'equity_accounts' => $equityRows,
@@ -155,6 +177,84 @@ class FinanceBalanceSheetService
             'total_liabilities_and_equity' => $liabilitiesAndEquity,
             'difference' => $this->subtractSigned($totalAssets, $liabilitiesAndEquity),
         ];
+    }
+
+    private function assertCostCenter(
+        Organization $organization,
+        string $type,
+        ?int $ownerId,
+    ): void {
+        if (! in_array($type, ['all', 'organization', 'unit', 'committee'], true)) {
+            throw new InvalidArgumentException('The selected cost center type is invalid.');
+        }
+
+        if ($type === 'all') {
+            if ($ownerId !== null) {
+                throw new InvalidArgumentException('All scopes cannot have a cost center owner.');
+            }
+
+            return;
+        }
+
+        if ($type === 'organization') {
+            if ($ownerId !== null && $ownerId !== (int) $organization->id) {
+                throw new InvalidArgumentException('The selected cost center owner is invalid or belongs to another organization.');
+            }
+
+            return;
+        }
+
+        if ($ownerId === null) {
+            throw new InvalidArgumentException('A cost center owner must be selected.');
+        }
+
+        if ($type === 'committee' && ! Schema::hasTable('committees')) {
+            throw new InvalidArgumentException('Committee cost centers are unavailable.');
+        }
+
+        $exists = $type === 'unit'
+            ? Unit::query()->whereKey($ownerId)->where('organization_id', $organization->id)->exists()
+            : Committee::query()->whereKey($ownerId)->where('organization_id', $organization->id)->exists();
+
+        if (! $exists) {
+            if ($type === 'unit') {
+                throw new InvalidArgumentException('The selected unit does not belong to the organization.');
+            }
+
+            throw new InvalidArgumentException('The selected cost center owner is invalid or belongs to another organization.');
+        }
+    }
+
+    private function applyCostCenterFilter(
+        $query,
+        Organization $organization,
+        string $type,
+        ?int $ownerId,
+    ): void {
+        if ($type === 'organization') {
+            $query->where(function ($filter) use ($organization): void {
+                $filter->where(function ($explicit) use ($organization): void {
+                    $explicit->where('cost_centers.owner_type', 'organization')
+                        ->where('cost_centers.owner_id', $organization->id);
+                })->orWhere(function ($legacy): void {
+                    $legacy->whereNull('lines.finance_cost_center_id')
+                        ->whereNull('journals.unit_id');
+                });
+            });
+        } elseif ($type === 'unit') {
+            $query->where(function ($filter) use ($ownerId): void {
+                $filter->where(function ($explicit) use ($ownerId): void {
+                    $explicit->where('cost_centers.owner_type', 'unit')
+                        ->where('cost_centers.owner_id', $ownerId);
+                })->orWhere(function ($legacy) use ($ownerId): void {
+                    $legacy->whereNull('lines.finance_cost_center_id')
+                        ->where('journals.unit_id', $ownerId);
+                });
+            });
+        } elseif ($type === 'committee') {
+            $query->where('cost_centers.owner_type', 'committee')
+                ->where('cost_centers.owner_id', $ownerId);
+        }
     }
 
     private function assertScope(Organization $organization, FinanceScope $scope): void

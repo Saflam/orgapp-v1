@@ -31,7 +31,13 @@
                                                                             <a class="nav-link active" href="http://test-organization.lvh.me:8000/organization/finance/accounts"><span class="nav-icon" aria-hidden="true">▤</span><span>Chart of Accounts</span></a>
                                                                                                                                             </div>
                             </details>
-                                                                                        <details class="nav-group" >
+                                                            <a class="nav-link " href="http://test-organization.lvh.me:8000/organization/finance/receivables-payables">
+                                    <span class="nav-icon" aria-hidden="true">⇄</span><span>Receivables &amp; Payables</span>
+                                </a>
+                                                                                        <a class="nav-link " href="http://test-organization.lvh.me:8000/organization/finance/parties">
+                                    <span class="nav-icon" aria-hidden="true">♙</span><span>Customers &amp; Suppliers</span>
+                                </a>
+                                                                                                                                                <details class="nav-group" >
                                     <summary class="nav-group-toggle ">
                                         <span class="nav-icon" aria-hidden="true">▤</span><span>Reports</span><span class="nav-chevron" aria-hidden="true"></span>
                                     </summary>
@@ -71,8 +77,8 @@
                 </details>
             </nav>
                 <div class="user-chip">
-            <span class="avatar" aria-hidden="true">W</span>
-            <div class="user-meta"><strong>Winfield Kub</strong><span>gerardo10@example.net</span></div>
+            <span class="avatar" aria-hidden="true">K</span>
+            <div class="user-meta"><strong>Kristofer Hickle</strong><span>qpurdy@example.com</span></div>
         </div>
     </aside>
     <label class="mobile-overlay" for="nav-toggle" aria-label="Close navigation"></label>
@@ -84,15 +90,15 @@
                 <div><div class="eyebrow">Organization Admin</div><div class="topbar-title">Chart of Accounts</div></div>
             </div>
             <div class="topbar-right">
-                <span class="topbar-user">gerardo10@example.net</span>
+                <span class="topbar-user">qpurdy@example.com</span>
                                     <a class="btn secondary" href="http://test-organization.lvh.me:8000/home">Organization home</a>
                                 <form method="POST" action="http://test-organization.lvh.me:8000/logout">
-                    <input type="hidden" name="_token" value="pcVMfRoZGBZqXthxTlVyUvjDJFSMWZ8zvHOpG5to" autocomplete="off">                    <button type="submit" class="btn secondary">Log out</button>
+                    <input type="hidden" name="_token" value="Wi3bn5jPHPJnHEWE4ZcwoMF11cGIiMvuJT0V1mwa" autocomplete="off">                    <button type="submit" class="btn secondary">Log out</button>
                 </form>
             </div>
         </header>
         <main class="container">
-                        <div wire:snapshot="{&quot;data&quot;:{&quot;organization&quot;:[null,{&quot;class&quot;:&quot;Modules\\Core\\Models\\Organization&quot;,&quot;key&quot;:1,&quot;s&quot;:&quot;mdl&quot;}],&quot;editingId&quot;:null,&quot;code&quot;:&quot;&quot;,&quot;name&quot;:&quot;&quot;,&quot;accountType&quot;:&quot;asset&quot;,&quot;parentId&quot;:null,&quot;isCashAccount&quot;:false,&quot;cashFlowCategory&quot;:&quot;&quot;,&quot;successMessage&quot;:&quot;&quot;},&quot;memo&quot;:{&quot;id&quot;:&quot;1CFTCkXphoaoWfd4pPcu&quot;,&quot;name&quot;:&quot;modules.finance.livewire.finance-chart-of-accounts-management&quot;,&quot;path&quot;:&quot;organization\/finance\/accounts&quot;,&quot;method&quot;:&quot;GET&quot;,&quot;release&quot;:&quot;a-a-a&quot;,&quot;children&quot;:[],&quot;scripts&quot;:[],&quot;assets&quot;:[],&quot;errors&quot;:[],&quot;locale&quot;:&quot;en&quot;,&quot;islands&quot;:[]},&quot;checksum&quot;:&quot;8a95b3b0d1f5d2ef3c0cb58b74a7b0246564329686df12223056eb730d93ee85&quot;}" wire:effects="[]" wire:id="1CFTCkXphoaoWfd4pPcu" wire:name="modules.finance.livewire.finance-chart-of-accounts-management" class="finance-chart-of-accounts-management">
+                        <div wire:snapshot="{&quot;data&quot;:{&quot;organization&quot;:[null,{&quot;class&quot;:&quot;Modules\\Core\\Models\\Organization&quot;,&quot;key&quot;:1,&quot;s&quot;:&quot;mdl&quot;}],&quot;editingId&quot;:null,&quot;code&quot;:&quot;&quot;,&quot;name&quot;:&quot;&quot;,&quot;accountType&quot;:&quot;asset&quot;,&quot;parentId&quot;:null,&quot;isCashAccount&quot;:false,&quot;cashFlowCategory&quot;:&quot;&quot;,&quot;successMessage&quot;:&quot;&quot;},&quot;memo&quot;:{&quot;id&quot;:&quot;O5aDMXUfIxs5PdQchW6L&quot;,&quot;name&quot;:&quot;modules.finance.livewire.finance-chart-of-accounts-management&quot;,&quot;path&quot;:&quot;organization\/finance\/accounts&quot;,&quot;method&quot;:&quot;GET&quot;,&quot;release&quot;:&quot;a-a-a&quot;,&quot;children&quot;:[],&quot;scripts&quot;:[],&quot;assets&quot;:[],&quot;errors&quot;:[],&quot;locale&quot;:&quot;en&quot;,&quot;islands&quot;:[]},&quot;checksum&quot;:&quot;a392c1652a63e6caa0070c4f0a8e146bf455d6b2f72dd748ab00dbda42c06dec&quot;}" wire:effects="[]" wire:id="O5aDMXUfIxs5PdQchW6L" wire:name="modules.finance.livewire.finance-chart-of-accounts-management" class="finance-chart-of-accounts-management">
     <div class="page-head">
         <div>
             <h1>Chart of Accounts</h1>
@@ -120,6 +126,6 @@
     </div>
 </div>
 <!-- Livewire Scripts -->
-<script src="http://test-organization.lvh.me:8000/livewire-9d18f21d/livewire.js?id=8ea5922c"   data-csrf="pcVMfRoZGBZqXthxTlVyUvjDJFSMWZ8zvHOpG5to" data-module-url="http://test-organization.lvh.me:8000/livewire-9d18f21d" data-update-uri="http://test-organization.lvh.me:8000/livewire-9d18f21d/update" data-navigate-once="true"></script>
+<script src="http://test-organization.lvh.me:8000/livewire-9d18f21d/livewire.js?id=8ea5922c"   data-csrf="Wi3bn5jPHPJnHEWE4ZcwoMF11cGIiMvuJT0V1mwa" data-module-url="http://test-organization.lvh.me:8000/livewire-9d18f21d" data-update-uri="http://test-organization.lvh.me:8000/livewire-9d18f21d/update" data-navigate-once="true"></script>
 </body>
 </html>

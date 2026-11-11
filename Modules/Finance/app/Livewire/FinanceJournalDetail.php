@@ -53,7 +53,7 @@ class FinanceJournalDetail extends Component
         $journal = FinanceJournal::query()
             ->where('organization_id', $this->organization->id)
             ->where('finance_scope_id', $scope->id)
-            ->with(['period', 'unit', 'lines.account', 'originalJournal', 'reversal'])
+            ->with(['period', 'unit', 'lines.account', 'lines.costCenter', 'originalJournal', 'reversal'])
             ->findOrFail($this->journalId);
 
         return view('finance::livewire.journals.detail', [

@@ -50,6 +50,14 @@ class FinanceJournalPermissionRegistrationTest extends TestCase
             'name' => 'Confirm Settlements',
             'code' => 'finance.settlement.confirm',
         ]);
+        foreach ([
+            'finance.supplier.view', 'finance.supplier.manage',
+            'finance.sales_invoice.view', 'finance.sales_invoice.manage',
+            'finance.purchase_bill.view', 'finance.purchase_bill.manage',
+            'finance.payment.view', 'finance.payment.manage', 'finance.aging.view',
+        ] as $code) {
+            $this->assertDatabaseHas('permissions', ['module' => 'finance', 'code' => $code]);
+        }
     }
 
     public function test_finance_administrator_role_includes_journal_permissions(): void
@@ -64,5 +72,13 @@ class FinanceJournalPermissionRegistrationTest extends TestCase
         $this->assertContains('finance.settlement.view', $financeAdministrator['permissions']);
         $this->assertContains('finance.settlement.manage', $financeAdministrator['permissions']);
         $this->assertContains('finance.settlement.confirm', $financeAdministrator['permissions']);
+        foreach ([
+            'finance.supplier.view', 'finance.supplier.manage',
+            'finance.sales_invoice.view', 'finance.sales_invoice.manage',
+            'finance.purchase_bill.view', 'finance.purchase_bill.manage',
+            'finance.payment.view', 'finance.payment.manage', 'finance.aging.view',
+        ] as $code) {
+            $this->assertContains($code, $financeAdministrator['permissions']);
+        }
     }
 }

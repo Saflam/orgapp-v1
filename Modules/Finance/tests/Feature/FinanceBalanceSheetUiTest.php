@@ -104,6 +104,22 @@ class FinanceBalanceSheetUiTest extends TestCase
             ->assertSee('Balance Sheet');
     }
 
+
+    public function test_unit_scope_requires_a_selected_unit_before_showing_balances(): void
+    {
+        $user = $this->authorizeUser(['finance.report.view']);
+        $unit = Unit::factory()->create(['organization_id' => $this->organization->id]);
+        $this->postJournal('2026-04-10', $this->cash, $this->equity, '4321.0000', $unit->id);
+
+        $component = $this->reportScreen($user)
+            ->set('costCenterType', 'unit')
+            ->assertSee('Select a unit to generate this report.')
+            ->assertDontSee('4321.0000');
+
+        $component->set('costCenterOwnerId', $unit->id)
+            ->assertSee('4321.0000');
+    }
+
     public function test_user_without_report_permission_is_forbidden(): void
     {
         $user = $this->authorizeUser(['finance.journal.view']);

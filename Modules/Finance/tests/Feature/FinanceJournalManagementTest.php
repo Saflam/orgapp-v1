@@ -17,6 +17,7 @@ use Modules\Finance\Livewire\FinanceJournalManagement;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournal;
 use Modules\Finance\Services\FinanceAccountProvisioningService;
+use Modules\Finance\Services\FinanceCostCenterService;
 use Modules\Finance\Services\FinanceJournalService;
 use Modules\Finance\Services\FinancePeriodService;
 use Modules\Finance\Services\FinanceScopeService;
@@ -302,4 +303,36 @@ class FinanceJournalManagementTest extends TestCase
 
         return $user;
     }
+
+    public function test_manual_journal_can_assign_a_cost_centre_to_each_line(): void
+    {
+        $user = $this->authorizeUser(['finance.journal.view', 'finance.journal.post']);
+
+        $this->journalScreen($user)
+            ->set('transactionDate', '2026-10-10')
+            ->set('periodId', $this->period->id)
+            ->set('description', 'Central cost-centre journal')
+            ->set('lines.0.finance_account_id', $this->cash->id)
+            ->set('lines.0.cost_center_type', 'organization')
+            ->set('lines.0.debit', '125.0000')
+            ->set('lines.0.credit', '0.0000')
+            ->set('lines.1.finance_account_id', $this->income->id)
+            ->set('lines.1.cost_center_type', 'organization')
+            ->set('lines.1.debit', '0.0000')
+            ->set('lines.1.credit', '125.0000')
+            ->call('postJournal')
+            ->assertHasNoErrors();
+
+        $central = app(FinanceCostCenterService::class)->central($this->organization);
+        $journal = FinanceJournal::query()
+            ->where('organization_id', $this->organization->id)
+            ->where('description', 'Central cost-centre journal')
+            ->firstOrFail();
+
+        $this->assertSame(
+            [$central->id, $central->id],
+            $journal->lines()->orderBy('id')->pluck('finance_cost_center_id')->all(),
+        );
+    }
+
 }

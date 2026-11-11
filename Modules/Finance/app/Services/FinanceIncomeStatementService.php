@@ -4,6 +4,7 @@ namespace Modules\Finance\Services;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
@@ -79,6 +80,10 @@ class FinanceIncomeStatementService
                 );
             }
         } elseif ($costCenterType === 'committee') {
+            if (! Schema::hasTable('committees')) {
+                throw new InvalidArgumentException('Committee cost centers are unavailable.');
+            }
+
             if ($costCenterOwnerId === null || ! Committee::query()
                 ->whereKey($costCenterOwnerId)
                 ->where('organization_id', $organization->id)

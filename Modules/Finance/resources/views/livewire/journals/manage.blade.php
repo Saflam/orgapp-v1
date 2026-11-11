@@ -55,11 +55,13 @@
                 </div>
 
                 <h3>Journal lines</h3>
+                <p class="muted">Cost centres are assigned per line. For accurate cost-centre reports, assign the same centre to the corresponding debit and credit lines; split cash or bank lines when allocating a transaction across multiple centres.</p>
                 <div class="table-wrap journal-entry-lines">
                     <table>
                         <thead>
                             <tr>
                                 <th>Account</th>
+                                <th>Cost centre</th>
                                 <th>Description</th>
                                 <th>Debit</th>
                                 <th>Credit</th>
@@ -79,6 +81,32 @@
                                         @error("lines.$index.finance_account_id") <span class="error">{{ $message }}</span> @enderror
                                     </td>
                                     <td>
+                                        <select wire:model.live="lines.{{ $index }}.cost_center_type">
+                                            <option value="none">No cost centre</option>
+                                            <option value="organization">Central / Organization</option>
+                                            <option value="unit">Unit</option>
+                                            @if ($hasCommitteeTable)
+                                                <option value="committee">Committee</option>
+                                            @endif
+                                        </select>
+                                        @if (in_array($line['cost_center_type'] ?? 'none', ['unit', 'committee'], true))
+                                            <select wire:model="lines.{{ $index }}.cost_center_id" aria-label="Cost centre owner">
+                                                <option value="">Select {{ $line['cost_center_type'] }}</option>
+                                                @if (($line['cost_center_type'] ?? '') === 'unit')
+                                                    @foreach ($units as $unit)
+                                                        <option value="{{ $unit->id }}">{{ $unit->name }}</option>
+                                                    @endforeach
+                                                @else
+                                                    @foreach ($committees as $committee)
+                                                        <option value="{{ $committee->id }}">{{ $committee->name }}</option>
+                                                    @endforeach
+                                                @endif
+                                            </select>
+                                        @endif
+                                        @error("lines.$index.cost_center_type") <span class="error">{{ $message }}</span> @enderror
+                                        @error("lines.$index.cost_center_id") <span class="error">{{ $message }}</span> @enderror
+                                    </td>
+                                    <td>
                                         <input type="text" wire:model="lines.{{ $index }}.description" maxlength="500" placeholder="Optional line description">
                                         @error("lines.$index.description") <span class="error">{{ $message }}</span> @enderror
                                     </td>
@@ -96,7 +124,7 @@
                                 </tr>
                             @endforeach
                             <tr>
-                                <th colspan="2">Totals</th>
+                                <th colspan="3">Totals</th>
                                 <th>{{ number_format($draftDebitTotal, 4) }}</th>
                                 <th>{{ number_format($draftCreditTotal, 4) }}</th>
                                 <th></th>
@@ -160,6 +188,7 @@
                         <th>Date</th>
                         <th>Period</th>
                         <th>Unit</th>
+                        <th>Cost centres</th>
                         <th>Description</th>
                         <th>Lines</th>
                         <th>Total debit</th>
@@ -182,6 +211,10 @@
                             <td>{{ $journal->transaction_date->format('d M Y') }}</td>
                             <td>{{ $journal->period?->code ?? '—' }}</td>
                             <td>{{ $journal->unit?->name ?? 'Organization' }}</td>
+                            <td>
+                                @php($journalCostCenters = $journal->lines->pluck('costCenter.name')->filter()->unique()->values())
+                                {{ $journalCostCenters->isEmpty() ? '—' : $journalCostCenters->join(', ') }}
+                            </td>
                             <td>{{ $journal->description ?: '—' }}</td>
                             <td>{{ $journal->lines_count }}</td>
                             <td>{{ number_format((float) $journal->lines->sum('debit'), 4) }}</td>
@@ -195,7 +228,7 @@
                                         <circle cx="12" cy="12" r="2.7"></circle>
                                     </svg>
                                 </a>
-                                @if ($canReverse && $journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal)
+                                @if ($canReverse && $journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal && ! in_array($journal->source_type, ['finance_sales_invoice', 'finance_purchase_bill', 'finance_payment'], true))
                                     <button class="journal-icon-btn" type="button"
                                             wire:click="prepareReversal({{ $journal->id }})"
                                             title="Reverse journal" aria-label="Reverse journal {{ $journal->journal_number }}">
@@ -210,7 +243,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="10" class="empty">No journal entries match the selected filters.</td></tr>
+                        <tr><td colspan="11" class="empty">No journal entries match the selected filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>

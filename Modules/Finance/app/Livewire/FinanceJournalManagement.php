@@ -5,11 +5,13 @@ namespace Modules\Finance\Livewire;
 use App\Support\Organization\CurrentOrganization;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Services\AuthorizationService;
+use Modules\Committee\Models\Committee;
 use Modules\Finance\Enums\FinancePeriodStatus;
 use Modules\Finance\Models\FinanceAccount;
 use Modules\Finance\Models\FinanceJournal;
@@ -94,6 +96,17 @@ class FinanceJournalManagement extends Component
         $this->lines[] = $this->emptyLine();
     }
 
+    public function updatedLines(mixed $value, string $key): void
+    {
+        if (str_ends_with($key, '.cost_center_type')) {
+            $index = (int) explode('.', $key, 2)[0];
+
+            if (isset($this->lines[$index])) {
+                $this->lines[$index]['cost_center_id'] = null;
+            }
+        }
+    }
+
     public function removeLine(int $index): void
     {
         if (count($this->lines) <= 2) {
@@ -123,10 +136,29 @@ class FinanceJournalManagement extends Component
             'description' => ['nullable', 'string', 'max:1000'],
             'lines' => ['required', 'array', 'min:2', 'max:50'],
             'lines.*.finance_account_id' => ['required', 'integer'],
+            'lines.*.cost_center_type' => ['required', 'in:none,organization,unit,committee'],
+            'lines.*.cost_center_id' => ['nullable', 'integer', 'min:1'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],
             'lines.*.debit' => ['required', 'numeric', 'min:0'],
             'lines.*.credit' => ['required', 'numeric', 'min:0'],
         ]);
+
+        foreach ($validated['lines'] as $index => $line) {
+            $centerType = $line['cost_center_type'] ?? 'none';
+
+            if (in_array($centerType, ['unit', 'committee'], true)
+                && blank($line['cost_center_id'] ?? null)) {
+                throw ValidationException::withMessages([
+                    "lines.$index.cost_center_id" => 'Select the unit or committee for this cost centre.',
+                ]);
+            }
+
+            if ($centerType === 'committee' && ! Schema::hasTable('committees')) {
+                throw ValidationException::withMessages([
+                    "lines.$index.cost_center_type" => 'Committee cost centres are unavailable.',
+                ]);
+            }
+        }
 
         $scope = $scopes->organizationScope($this->organization);
 
@@ -138,6 +170,13 @@ class FinanceJournalManagement extends Component
         $lines = array_map(
             fn (array $line): array => [
                 'finance_account_id' => (int) $line['finance_account_id'],
+                'cost_center_type' => ($line['cost_center_type'] ?? 'none') === 'none'
+                    ? null
+                    : $line['cost_center_type'],
+                'cost_center_id' => in_array(($line['cost_center_type'] ?? 'none'), ['unit', 'committee'], true)
+                    && ! blank($line['cost_center_id'] ?? null)
+                        ? (int) $line['cost_center_id']
+                        : null,
                 'description' => blank($line['description'] ?? null) ? null : $line['description'],
                 'debit' => $line['debit'],
                 'credit' => $line['credit'],
@@ -180,7 +219,8 @@ class FinanceJournalManagement extends Component
             ->findOrFail($journalId);
 
         abort_unless(
-            $journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal()->exists(),
+            $journal->isPosted() && ! $journal->isReversal() && ! $journal->reversal()->exists()
+                && ! in_array($journal->source_type, ['finance_sales_invoice', 'finance_purchase_bill', 'finance_payment'], true),
             422,
             'This journal cannot be reversed.',
         );
@@ -294,10 +334,19 @@ class FinanceJournalManagement extends Component
             ->orderBy('name')
             ->get();
 
+        $hasCommitteeTable = Schema::hasTable('committees');
+        $committees = collect();
+        if ($hasCommitteeTable) {
+            $committees = Committee::query()
+                ->where('organization_id', $this->organization->id)
+                ->orderBy('name')
+                ->get();
+        }
+
         $query = FinanceJournal::query()
             ->where('organization_id', $this->organization->id)
             ->where('finance_scope_id', $scope->id)
-            ->with(['period', 'unit', 'lines.account', 'reversal'])
+            ->with(['period', 'unit', 'lines.account', 'lines.costCenter', 'reversal'])
             ->withCount('lines')
             ->orderByDesc('transaction_date')
             ->orderByDesc('id');
@@ -334,6 +383,8 @@ class FinanceJournalManagement extends Component
             'openPeriods' => $openPeriods,
             'allPeriods' => $allPeriods,
             'units' => $units,
+            'committees' => $committees,
+            'hasCommitteeTable' => $hasCommitteeTable,
             'journalEntries' => $journalEntries,
             'draftDebitTotal' => collect($this->lines)->sum(fn (array $line): float => (float) ($line['debit'] ?? 0)),
             'draftCreditTotal' => collect($this->lines)->sum(fn (array $line): float => (float) ($line['credit'] ?? 0)),
@@ -349,6 +400,8 @@ class FinanceJournalManagement extends Component
     {
         return [
             'finance_account_id' => '',
+            'cost_center_type' => 'none',
+            'cost_center_id' => null,
             'description' => '',
             'debit' => '0.0000',
             'credit' => '0.0000',
