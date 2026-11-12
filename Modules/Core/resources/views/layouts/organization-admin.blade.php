@@ -18,7 +18,6 @@
     // when the signed-in user can view applications in this organization.
     $canViewMembershipApplications = false;
     $canViewMembersDirectory = false;
-    $canViewUnitTransfers = false;
     $canViewMemberPayments = false;
     $canViewFinancePeriods = false;
     $canViewFinanceAccounts = false;
@@ -35,6 +34,7 @@
     $canAccessCommittee = false;
     $canViewCommittees = false;
     $canViewDesignations = false;
+    $canViewTrustees = false;
     $membershipPendingCount = 0;
     if ($layoutUser && ! $layoutUser->is_system_admin && $brandingOrganization) {
         $membershipAuthorization = app(\Modules\Core\Services\AuthorizationService::class);
@@ -119,17 +119,6 @@
         );
         $canViewMembersDirectory = $membershipAuthorization->can($layoutUser, 'members.view', $membershipOrganizationContext)
             || $membershipAuthorization->can($layoutUser, 'members.manage', $membershipOrganizationContext);
-        $canViewUnitTransfers = $membershipAuthorization->can($layoutUser, 'member.unit-transfer.view', $membershipOrganizationContext);
-        if (! $canViewUnitTransfers) {
-            $canViewUnitTransfers = \Modules\Core\Models\Unit::query()
-                ->where('organization_id', $brandingOrganization->id)
-                ->get(['id'])
-                ->contains(fn ($transferUnit): bool => $membershipAuthorization->can(
-                    $layoutUser,
-                    'member.unit-transfer.view',
-                    new \Modules\Core\Data\AuthorizationContext((int) $brandingOrganization->id, (int) $transferUnit->id),
-                ));
-        }
         $canViewMemberPayments = $membershipAuthorization->can($layoutUser, 'membership.payment.view', $membershipOrganizationContext);
         if (! $canViewMemberPayments) {
             $canViewMemberPayments = \Modules\Core\Models\Unit::query()
@@ -161,7 +150,9 @@
                 || $membershipAuthorization->can($layoutUser, 'committee.manage', $membershipOrganizationContext);
             $canViewDesignations = $membershipAuthorization->can($layoutUser, 'committee.designations.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'committee.designations.manage', $membershipOrganizationContext);
-            $canAccessCommittee = $canViewCommittees || $canViewDesignations
+            $canViewTrustees = $membershipAuthorization->can($layoutUser, 'trustee.view', $membershipOrganizationContext)
+                || $membershipAuthorization->can($layoutUser, 'trustee.manage', $membershipOrganizationContext);
+            $canAccessCommittee = $canViewCommittees || $canViewDesignations || $canViewTrustees
                 || $membershipAuthorization->can($layoutUser, 'committee.memberships.view', $membershipOrganizationContext)
                 || $membershipAuthorization->can($layoutUser, 'committee.memberships.manage', $membershipOrganizationContext);
         }
@@ -242,11 +233,6 @@
                         <span class="nav-icon" aria-hidden="true">♙</span><span>Members</span>
                     </a>
                 @endif
-                @if ($canViewUnitTransfers && \Illuminate\Support\Facades\Route::has('member.unit-transfers'))
-                    <a class="nav-link {{ request()->routeIs('member.unit-transfers') ? 'active' : '' }}" href="{{ route('member.unit-transfers') }}">
-                        <span class="nav-icon" aria-hidden="true">⇄</span><span>Unit Transfers</span>
-                    </a>
-                @endif
                 @if ($canViewMembershipApplications && \Illuminate\Support\Facades\Route::has('member.membership-applications'))
                     <a class="nav-link {{ request()->routeIs('member.membership-applications') ? 'active' : '' }}" href="{{ route('member.membership-applications') }}">
                         <span class="nav-icon" aria-hidden="true">▤</span><span>Membership Applications</span>
@@ -259,7 +245,7 @@
                     </a>
                 @endif
                 @if ($canAccessCommittee && \Illuminate\Support\Facades\Route::has('committee.dashboard'))
-                    @php($committeeNavActive = request()->routeIs('committee.dashboard', 'committee.committees', 'committee.designations'))
+                    @php($committeeNavActive = request()->routeIs('committee.dashboard', 'committee.committees', 'committee.designations', 'committee.trustees.*'))
                     <details class="nav-group" {{ $committeeNavActive ? 'open' : '' }}>
                         <summary class="nav-group-toggle {{ $committeeNavActive ? 'active' : '' }}">
                             <span class="nav-icon" aria-hidden="true">♧</span><span>Committee</span><span class="nav-chevron" aria-hidden="true"></span>
@@ -271,6 +257,12 @@
                             @endif
                             @if ($canViewDesignations && \Illuminate\Support\Facades\Route::has('committee.designations'))
                                 <a class="nav-link {{ request()->routeIs('committee.designations') ? 'active' : '' }}" href="{{ route('committee.designations') }}"><span class="nav-icon" aria-hidden="true">♙</span><span>Designations</span></a>
+                            @endif
+                            @if ($canViewTrustees && \Illuminate\Support\Facades\Route::has('committee.trustees.index'))
+                                <a class="nav-link {{ request()->routeIs('committee.trustees.index', 'committee.trustees.export') ? 'active' : '' }}" href="{{ route('committee.trustees.index') }}"><span class="nav-icon" aria-hidden="true">♟</span><span>Active Trustees</span></a>
+                                @if (\Illuminate\Support\Facades\Route::has('committee.trustees.history'))
+                                    <a class="nav-link {{ request()->routeIs('committee.trustees.history', 'committee.trustees.history.export') ? 'active' : '' }}" href="{{ route('committee.trustees.history') }}"><span class="nav-icon" aria-hidden="true">▤</span><span>Former &amp; Inactive Trustees</span></a>
+                                @endif
                             @endif
                         </div>
                     </details>

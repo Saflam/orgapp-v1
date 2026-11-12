@@ -11,6 +11,30 @@ class CommitteePermissionProvider implements PermissionProvider
         return [
             [
                 'module' => 'Committee',
+                'name' => 'View trustees',
+                'code' => 'trustee.view',
+                'description' => 'View trustee records, appointments, and history.',
+            ],
+            [
+                'module' => 'Committee',
+                'name' => 'Manage trustees',
+                'code' => 'trustee.manage',
+                'description' => 'Appoint, reappoint, and remove trustees.',
+            ],
+            [
+                'module' => 'Committee',
+                'name' => 'View trustees',
+                'code' => 'trustee.view',
+                'description' => 'View trustee records, appointments, and history.',
+            ],
+            [
+                'module' => 'Committee',
+                'name' => 'Manage trustees',
+                'code' => 'trustee.manage',
+                'description' => 'Appoint, reappoint, and remove trustees.',
+            ],
+            [
+                'module' => 'Committee',
                 'name' => 'View committees',
                 'code' => 'committee.view',
                 'description' => 'View committees and their terms.',

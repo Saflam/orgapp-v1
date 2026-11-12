@@ -23,6 +23,13 @@
             <strong class="committee-stat-number">{{ number_format($membershipCount) }}</strong>
             <span class="committee-stat-footnote">Across this organization</span>
         </div>
+        @if($canViewTrustees)
+            <a href="{{ route('committee.trustees.index') }}" class="committee-stat-card">
+                <span class="committee-stat-label">Trustees</span>
+                <strong class="committee-stat-number">Manage</strong>
+                <span class="committee-stat-action">View active trustees <span aria-hidden="true">→</span></span>
+            </a>
+        @endif
     </section>
 
     <aside class="committee-notice" role="note">

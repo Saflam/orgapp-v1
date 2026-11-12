@@ -1,11 +1,13 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Committee\Http\Controllers\CommitteeMemberPhotoController;
+use Modules\Committee\Http\Controllers\TrusteeDirectoryController;
+use Modules\Committee\Http\Controllers\TrusteeMemberProfileController;
 use Modules\Committee\Livewire\CommitteeDashboard;
 use Modules\Committee\Livewire\CommitteeIndex;
 use Modules\Committee\Livewire\CommitteeTermManagement;
 use Modules\Committee\Livewire\CommitteeMemberManagement;
-use Modules\Committee\Http\Controllers\CommitteeMemberPhotoController;
 use Modules\Committee\Livewire\DesignationIndex;
 use Modules\Committee\Livewire\DesignationEdit;
 use Modules\Committee\Livewire\CurrentCommitteeList;
@@ -13,6 +15,25 @@ use Modules\Committee\Livewire\CommitteeMembershipHistory;
 use Modules\Committee\Livewire\CommitteeMemberProfile;
 
 Route::middleware(['auth', 'organization', 'organization.access'])->group(function (): void {
+    Route::middleware('module:Committee')->group(function (): void {
+        Route::get('/organization/committee/trustees', [TrusteeDirectoryController::class, 'active'])
+            ->name('committee.trustees.index');
+        Route::get('/organization/committee/trustees/history', [TrusteeDirectoryController::class, 'history'])
+            ->name('committee.trustees.history');
+        Route::get('/organization/committee/trustees/export/pdf', [TrusteeDirectoryController::class, 'exportActivePdf'])
+            ->name('committee.trustees.export');
+        Route::get('/organization/committee/trustees/history/export/pdf', [TrusteeDirectoryController::class, 'exportHistoryPdf'])
+            ->name('committee.trustees.history.export');
+
+        Route::post('/organization/members/{member}/trustee-appointments', [TrusteeMemberProfileController::class, 'appoint'])
+            ->whereNumber('member')
+            ->name('committee.trustees.appoint');
+        Route::post('/organization/members/{member}/trustee-appointments/{appointment}/remove', [TrusteeMemberProfileController::class, 'remove'])
+            ->whereNumber('member')
+            ->whereNumber('appointment')
+            ->name('committee.trustees.remove');
+    });
+
     Route::get('/organization/committee/current', CurrentCommitteeList::class)->name('committee.current');
     Route::get('/organization/committee', CommitteeDashboard::class)->name('committee.dashboard');
     Route::get('/organization/committee/committees', CommitteeIndex::class)->name('committee.committees');

@@ -6,6 +6,8 @@ use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Core\Services\AuthorizationContributorRegistry;
 use Modules\Core\Services\PermissionRegistry;
+use Modules\Member\Services\MemberProfileSectionExtensionRegistry;
+use Modules\Committee\Services\TrusteeMemberProfileSection;
 
 class CommitteeServiceProvider extends ModuleServiceProvider
 {
@@ -53,6 +55,13 @@ class CommitteeServiceProvider extends ModuleServiceProvider
                 $registry->register(
                     new \Modules\Committee\Services\CommitteeAuthorizationContributor()
                 );
+            }
+        );
+
+        $this->app->afterResolving(
+            MemberProfileSectionExtensionRegistry::class,
+            function (MemberProfileSectionExtensionRegistry $registry): void {
+                $registry->register($this->app->make(TrusteeMemberProfileSection::class));
             }
         );
     }

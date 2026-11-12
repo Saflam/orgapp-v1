@@ -33,6 +33,8 @@ class CommitteeDashboard extends Component
             || $authorization->can($user, 'committee.designations.manage', $context)
             || $authorization->can($user, 'committee.memberships.view', $context)
             || $authorization->can($user, 'committee.memberships.manage', $context)
+            || $authorization->can($user, 'trustee.view', $context)
+            || $authorization->can($user, 'trustee.manage', $context)
         ), 403);
     }
 
@@ -49,8 +51,14 @@ class CommitteeDashboard extends Component
             || app(AuthorizationService::class)->can($user, 'committee.designations.manage', $context)
             || app(AuthorizationService::class)->can($user, 'committee.memberships.view', $context)
             || app(AuthorizationService::class)->can($user, 'committee.memberships.manage', $context)
+            || app(AuthorizationService::class)->can($user, 'trustee.view', $context)
+            || app(AuthorizationService::class)->can($user, 'trustee.manage', $context)
         ), 403);
+        $canViewTrustees = app(AuthorizationService::class)->can($user, 'trustee.view', $context)
+            || app(AuthorizationService::class)->can($user, 'trustee.manage', $context);
+
         return view('committee::livewire.dashboard', [
+            'canViewTrustees' => $canViewTrustees,
             'committeeCount' => Committee::query()->where('organization_id', $organization->id)->count(),
             'designationCount' => Designation::query()->where('organization_id', $organization->id)->count(),
             'membershipCount' => CommitteeMembership::query()
