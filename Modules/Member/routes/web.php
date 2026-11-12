@@ -5,6 +5,7 @@ use Modules\Member\Livewire\MembershipTypeManagement;
 use Modules\Member\Livewire\MembershipApplicationManagement;
 use Modules\Member\Livewire\MemberPaymentCategoryManagement;
 use Modules\Member\Livewire\MemberDirectory;
+use Modules\Member\Livewire\MemberUnitTransferManagement;
 use Modules\Member\Http\Controllers\Web\MembershipApplicationPageController;
 use Modules\Member\Http\Controllers\Web\MembershipApplicationMediaController;
 use Modules\Member\Http\Controllers\Api\MembershipApplicationController;
@@ -23,6 +24,9 @@ Route::middleware(['auth', 'organization', 'organization.access'])
         Route::get('/organization/members', MemberDirectory::class)
             ->middleware('module:Member')
             ->name('member.directory');
+        Route::get('/organization/member-unit-transfers', MemberUnitTransferManagement::class)
+            ->middleware('module:Member')
+            ->name('member.unit-transfers');
         Route::get('/organization/members/{member}', [AdminMemberProfileController::class, 'show'])
             ->whereNumber('member')
             ->middleware('module:Member')
@@ -135,6 +139,8 @@ Route::middleware(['auth', 'organization', 'organization.access', 'module:Member
                 ->middleware('signed')
                 ->name('organization.member.dependants.id-card.verify');
         });
+        Route::post('/member/profile/unit-transfer-requests', [MemberPortalController::class, 'requestUnitTransfer'])
+            ->name('organization.member.unit-transfer-requests.store');
         Route::put('/member/profile', [MemberPortalController::class, 'update'])
             ->name('organization.member.profile.update');
         Route::put('/member/profile/modules/{module}', [MemberPortalController::class, 'updateModuleProfile'])

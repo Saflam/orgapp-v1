@@ -28,6 +28,7 @@ class FinanceReceivablesPayablesManagement extends Component
     public Organization $organization;
     public string $activeTab = 'receivables';
     public string $successMessage = '';
+    public string $activeModal = '';
 
     public string $invoiceSearch = '';
     public string $invoiceStatusFilter = 'outstanding';
@@ -92,6 +93,17 @@ class FinanceReceivablesPayablesManagement extends Component
         }
     }
 
+    public function openModal(string $modal): void
+    {
+        abort_unless(in_array($modal, ['invoice', 'bill', 'payment'], true), 404);
+        $this->activeModal = $modal;
+    }
+
+    public function closeModal(): void
+    {
+        $this->activeModal = '';
+    }
+
     public function updatedInvoiceSearch(): void { $this->resetPage('invoicesPage'); }
     public function updatedInvoiceStatusFilter(): void { $this->resetPage('invoicesPage'); }
     public function updatedBillSearch(): void { $this->resetPage('billsPage'); }
@@ -115,6 +127,7 @@ class FinanceReceivablesPayablesManagement extends Component
         } catch (\InvalidArgumentException $exception) { throw ValidationException::withMessages(['invoice' => $exception->getMessage()]); }
         $this->invoiceCustomerId = null; $this->invoiceNotes = ''; $this->invoiceLines = [$this->emptyLine()]; $this->invoiceRequestKey = (string) Str::uuid();
         $this->successMessage = 'Sales invoice posted and journal generated.';
+        $this->closeModal();
     }
 
     public function postBill(FinanceReceivablesPayablesService $service, AuthorizationService $authorization): void
@@ -126,6 +139,7 @@ class FinanceReceivablesPayablesManagement extends Component
         } catch (\InvalidArgumentException $exception) { throw ValidationException::withMessages(['bill' => $exception->getMessage()]); }
         $this->billSupplierId = null; $this->billSupplierReference = $this->billNotes = ''; $this->billLines = [$this->emptyLine()]; $this->billRequestKey = (string) Str::uuid();
         $this->successMessage = 'Supplier bill posted and journal generated.';
+        $this->closeModal();
     }
 
     public function recordPayment(FinanceReceivablesPayablesService $service, AuthorizationService $authorization): void
@@ -147,6 +161,7 @@ class FinanceReceivablesPayablesManagement extends Component
         } catch (\InvalidArgumentException $exception) { throw ValidationException::withMessages(['payment' => $exception->getMessage()]); }
         $this->paymentAmount = $this->paymentReference = ''; $this->paymentAllocations = [$this->emptyAllocation()]; $this->paymentRequestKey = (string) Str::uuid();
         $this->successMessage = 'Payment posted and allocated.';
+        $this->closeModal();
     }
 
     public function updatedPaymentDirection(): void { $this->paymentAllocations = [$this->emptyAllocation()]; }

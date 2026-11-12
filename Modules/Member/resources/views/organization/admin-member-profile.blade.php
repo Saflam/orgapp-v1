@@ -8,11 +8,41 @@
         </div>
         <div class="flex flex-wrap gap-2">
             <a href="{{ route('member.profile.pdf', $memberRecord->id) }}" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Export PDF</a>
+            @if($canRequestUnitTransfer)
+                <a href="{{ route('member.unit-transfers', ['member' => $memberRecord->id]) }}" class="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100">Request Unit Transfer</a>
+            @endif
             @if($canEdit)
                 <a href="{{ route('member.profile.edit', $memberRecord->id) }}" class="inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold !text-white hover:bg-emerald-800">Edit Profile</a>
             @endif
         </div>
     </div>
+
+    @if($pendingUnitTransfer)
+        <section role="status" aria-live="polite" class="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+            <div class="flex items-start gap-3">
+                <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M8.485 2.495a1.75 1.75 0 0 1 3.03 0l6.15 10.65A1.75 1.75 0 0 1 16.15 15.75H3.85a1.75 1.75 0 0 1-1.515-2.605l6.15-10.65ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 7.25a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <h2 class="text-sm font-bold text-amber-900">Unit transfer request in progress</h2>
+                    <p class="mt-1 text-sm text-amber-900">
+                        This member has requested a unit transfer from
+                        <strong>{{ $pendingUnitTransfer->fromUnit?->name ?? 'Current unit' }}</strong>
+                        to <strong>{{ $pendingUnitTransfer->toUnit?->name ?? 'the selected unit' }}</strong>.
+                    </p>
+                    <p class="mt-1 text-xs text-amber-800">
+                        Status: {{ ucfirst($pendingUnitTransfer->status->value) }}
+                        @if($pendingUnitTransfer->submitted_at)
+                            <span aria-hidden="true">&middot;</span> Requested {{ $pendingUnitTransfer->submitted_at->format('d M Y, h:i A') }}
+                        @endif
+                    </p>
+                    <p class="mt-2 text-xs font-medium text-amber-900">A new transfer request cannot be submitted until this request is completed, rejected, or cancelled.</p>
+                </div>
+            </div>
+        </section>
+    @endif
 
     <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="flex flex-col gap-5 border-b border-slate-100 p-6 sm:flex-row sm:items-center">

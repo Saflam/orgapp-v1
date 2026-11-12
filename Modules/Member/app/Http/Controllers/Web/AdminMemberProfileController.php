@@ -34,6 +34,8 @@ use Modules\Member\Models\MemberPaymentObligation;
 use Modules\Member\Enums\MemberPaymentObligationStatus;
 use Modules\Member\Services\MemberPaymentService;
 use Modules\Member\Models\UserIdentification;
+use Modules\Member\Models\MemberUnitTransfer;
+use Modules\Member\Enums\MemberUnitTransferStatus;
 use Modules\Member\Services\MemberProfileSectionExtensionRegistry;
 
 class AdminMemberProfileController extends Controller
@@ -52,6 +54,24 @@ class AdminMemberProfileController extends Controller
         $organizationContext = new AuthorizationContext((int) $organization->id);
         $canEdit = $authorization->can(auth()->user(), 'members.update', $organizationContext)
             || ($unitContext !== null && $authorization->can(auth()->user(), 'members.update', $unitContext));
+        // A submitted or approved transfer is still in progress. Do not offer
+        // another request while one of these transfers exists for this member.
+        $pendingUnitTransfer = MemberUnitTransfer::query()
+            ->where('organization_id', $organization->id)
+            ->where('member_id', $memberRecord->id)
+            ->whereIn('status', [
+                MemberUnitTransferStatus::SUBMITTED->value,
+                MemberUnitTransferStatus::APPROVED->value,
+            ])
+            ->with(['fromUnit', 'toUnit'])
+            ->latest('submitted_at')
+            ->latest('id')
+            ->first();
+
+        $canRequestUnitTransfer = $memberRecord->unit_id !== null
+            && $pendingUnitTransfer === null
+            && ($authorization->can(auth()->user(), 'member.unit-transfer.submit', $organizationContext)
+                || ($unitContext !== null && $authorization->can(auth()->user(), 'member.unit-transfer.submit', $unitContext)));
 
         $activeMembership = $memberRecord->memberships
             ->where('status', 'active')
@@ -150,7 +170,7 @@ class AdminMemberProfileController extends Controller
 
         return response()
             ->view('member::organization.admin-member-profile', compact(
-                'organization', 'memberRecord', 'activeMembership', 'membershipForEdit', 'profilePhotoUrl', 'canEdit',
+                'organization', 'memberRecord', 'canRequestUnitTransfer', 'pendingUnitTransfer', 'activeMembership', 'membershipForEdit', 'profilePhotoUrl', 'canEdit',
                 'adminNotes', 'paymentObligations', 'paymentItems', 'canViewPayments', 'canManagePayments', 'applications', 'moduleSections',
                 'emergencyContacts', 'identificationDocuments', 'activeSpouse', 'pendingSpouseInvitation', 'pendingSpouseRequest', 'eligibleSpouseMembers'
             ))

@@ -241,4 +241,81 @@ class FinanceReceivablesPayablesTest extends TestCase
         $this->assertSame('125.0000', $aging['buckets']['days_1_30']);
         $this->assertSame('125.0000', $aging['total_outstanding']);
     }
+
+    public function test_purchase_bill_request_key_prevents_duplicate_posting(): void
+    {
+        [$organization] = $this->setupLedger();
+
+        $supplier = app(FinanceSupplierService::class)->create(
+            $organization,
+            ['code' => 'SUP-IDEM', 'name' => 'Idempotent Supplier']
+        );
+
+        $service = app(FinanceReceivablesPayablesService::class);
+
+        $data = [
+            'request_key' => 'bill-request-001',
+            'finance_supplier_id' => $supplier->id,
+            'bill_date' => '2026-04-10',
+            'due_date' => '2026-05-10',
+            'supplier_invoice_number' => 'SUP-INV-001',
+            'lines' => [
+                ['description' => 'Office supplies', 'quantity' => 1, 'unit_price' => 100],
+            ],
+        ];
+
+        $first = $service->postPurchaseBill($organization, $data);
+        $second = $service->postPurchaseBill($organization, $data);
+
+        $this->assertSame($first->id, $second->id);
+
+        $this->assertDatabaseCount('finance_purchase_bills', 1);
+        $this->assertDatabaseCount('finance_journals', 1);
+    }
+
+    public function test_payment_request_key_prevents_duplicate_posting(): void
+    {
+        [$organization] = $this->setupLedger();
+
+        $customer = app(FinanceCustomerService::class)->createExternalCustomer(
+            $organization,
+            ['name' => 'Idempotent Payment Customer']
+        );
+
+        $service = app(FinanceReceivablesPayablesService::class);
+
+        $invoice = $service->postSalesInvoice($organization, [
+            'finance_customer_id' => $customer->id,
+            'invoice_date' => '2026-04-10',
+            'due_date' => '2026-05-10',
+            'lines' => [
+                ['description' => 'Service', 'quantity' => 1, 'unit_price' => 100],
+            ],
+        ]);
+
+        $cash = FinanceAccount::query()
+            ->where('organization_id', $organization->id)
+            ->where('code', '1000')
+            ->firstOrFail();
+
+        $data = [
+            'request_key' => 'payment-request-001',
+            'direction' => 'customer_receipt',
+            'payment_date' => '2026-04-20',
+            'finance_account_id' => $cash->id,
+            'amount' => 40,
+            'allocations' => [
+                ['finance_sales_invoice_id' => $invoice->id, 'amount' => 40],
+            ],
+        ];
+
+        $first = $service->recordPayment($organization, $data);
+        $second = $service->recordPayment($organization, $data);
+
+        $this->assertSame($first->id, $second->id);
+
+        $this->assertDatabaseCount('finance_payments', 1);
+        $this->assertDatabaseCount('finance_payment_allocations', 1);
+        $this->assertDatabaseCount('finance_journals', 2);
+    }
 }

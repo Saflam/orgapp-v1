@@ -73,6 +73,7 @@ class MemberPortalController extends Controller
             ->orderByDesc('id')
             ->get();
         $currentMembership = $membershipRecords->first();
+        $availableTransferUnits = \Modules\Core\Models\Unit::query()->where('organization_id', $organization->id)->where('is_active', true)->orderBy('name')->get();
         $moduleProfileSections = app(\Modules\Member\Services\MemberProfileSectionExtensionRegistry::class)
             ->sections($organization, $member);
         $dependants = $member->dependants()->wherePivotNull('ended_at')->with('identifications.identificationType')->get();
@@ -168,8 +169,36 @@ class MemberPortalController extends Controller
             if ($country) $whatsappCountryIso2 = $country['iso2'];
         }
 
-        return response()->view('member::organization.member-profile', compact('organization', 'member', 'user', 'identifications', 'identificationConfigurations', 'membershipRecords', 'currentMembership', 'moduleProfileSections', 'dependants', 'dependantIdentificationTypes', 'spouses', 'spouseRequests', 'outgoingSpouseRequests', 'hasAvailableSpouseMembers', 'spouseSourceApplication', 'obligations', 'primaryColor', 'currentUnit', 'phoneCountries', 'primaryPhoneCountryIso2', 'primaryPhoneNationalNumber', 'whatsappCountryIso2'))
+        return response()->view('member::organization.member-profile', compact('organization', 'member', 'user', 'identifications', 'identificationConfigurations', 'membershipRecords', 'currentMembership', 'moduleProfileSections', 'dependants', 'dependantIdentificationTypes', 'spouses', 'spouseRequests', 'outgoingSpouseRequests', 'hasAvailableSpouseMembers', 'spouseSourceApplication', 'obligations', 'primaryColor', 'currentUnit', 'phoneCountries', 'primaryPhoneCountryIso2', 'primaryPhoneNationalNumber', 'whatsappCountryIso2', 'availableTransferUnits'))
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function requestUnitTransfer(Request $request, CurrentOrganization $currentOrganization, \Modules\Member\Services\MemberUnitTransferService $transfers): RedirectResponse
+    {
+        $organization = $currentOrganization->get();
+        $member = $this->profiles->findForOrganization((int) $organization->id, (int) auth()->id());
+        abort_unless($member->user_id === auth()->id(), 403);
+
+        $data = $request->validate([
+            'target_unit_id' => ['required', 'integer'],
+            'spouse_included' => ['nullable', 'boolean'],
+        ]);
+
+        $targetUnit = \Modules\Core\Models\Unit::query()
+            ->where('organization_id', $organization->id)
+            ->where('is_active', true)
+            ->findOrFail((int) $data['target_unit_id']);
+
+        try {
+            $transfers->submit($member, (int) $targetUnit->id, (bool) ($data['spouse_included'] ?? false));
+        } catch (\DomainException $exception) {
+            return redirect()->route('organization.member.profile')
+                ->withErrors(['unit_transfer' => $exception->getMessage()])
+                ->withInput();
+        }
+
+        return redirect()->route('organization.member.profile')
+            ->with('status', 'Your unit transfer request has been submitted for approval.');
     }
 
     public function update(UpdateMemberProfileRequest $request, CurrentOrganization $currentOrganization): RedirectResponse

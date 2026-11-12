@@ -522,6 +522,37 @@
     @endif
 </section>
 
+
+<section id="unit-transfer" class="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 class="text-lg font-bold text-slate-950">Unit transfer</h2><p class="mt-1 text-sm text-slate-500">Request to move your membership to another unit. Both units must approve the request.</p></div>
+        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Current unit: {{ $currentUnit?->name ?? 'Not assigned' }}</span>
+    </div>
+    @if($errors->has('unit_transfer'))<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{{ $errors->first('unit_transfer') }}</p>@endif
+    @if(!$currentUnit)
+        <p class="mt-4 text-sm text-amber-700">A unit transfer cannot be requested because your current unit is not assigned.</p>
+    @else
+        <form method="POST" action="{{ route('organization.member.unit-transfer-requests.store') }}" class="mt-4 grid gap-4 sm:grid-cols-2">
+            @csrf
+            <div><label for="self-transfer-target-unit" class="mb-1 block text-sm font-semibold text-slate-700">Destination unit</label>
+                <select id="self-transfer-target-unit" name="target_unit_id" required class="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
+                    <option value="">Select destination unit</option>
+                    @foreach($availableTransferUnits->where('id', '!=', $currentUnit->id) as $unit)
+                        <option value="{{ $unit->id }}" @selected(old('target_unit_id') == $unit->id)>{{ $unit->name }}</option>
+                    @endforeach
+                </select>
+                @error('target_unit_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+            </div>
+            @if($spouses->isNotEmpty())
+                <div class="flex items-center"><label class="inline-flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" name="spouse_included" value="1" @checked(old('spouse_included', true)) class="rounded border-slate-300">Include my spouse in this transfer (if eligible)</label></div>
+            @else
+                <input type="hidden" name="spouse_included" value="0">
+            @endif
+            <div class="sm:col-span-2"><button type="submit" class="inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm" style="background:var(--org-primary)">Request Unit Transfer</button></div>
+        </form>
+    @endif
+</section>
+
 @if(!empty($moduleProfileSections))
     <section id="organization-module-details" class="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <h2 class="text-lg font-bold text-slate-950">Organization-specific details</h2>

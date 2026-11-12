@@ -18,6 +18,7 @@
     // when the signed-in user can view applications in this organization.
     $canViewMembershipApplications = false;
     $canViewMembersDirectory = false;
+    $canViewUnitTransfers = false;
     $canViewMemberPayments = false;
     $canViewFinancePeriods = false;
     $canViewFinanceAccounts = false;
@@ -118,6 +119,17 @@
         );
         $canViewMembersDirectory = $membershipAuthorization->can($layoutUser, 'members.view', $membershipOrganizationContext)
             || $membershipAuthorization->can($layoutUser, 'members.manage', $membershipOrganizationContext);
+        $canViewUnitTransfers = $membershipAuthorization->can($layoutUser, 'member.unit-transfer.view', $membershipOrganizationContext);
+        if (! $canViewUnitTransfers) {
+            $canViewUnitTransfers = \Modules\Core\Models\Unit::query()
+                ->where('organization_id', $brandingOrganization->id)
+                ->get(['id'])
+                ->contains(fn ($transferUnit): bool => $membershipAuthorization->can(
+                    $layoutUser,
+                    'member.unit-transfer.view',
+                    new \Modules\Core\Data\AuthorizationContext((int) $brandingOrganization->id, (int) $transferUnit->id),
+                ));
+        }
         $canViewMemberPayments = $membershipAuthorization->can($layoutUser, 'membership.payment.view', $membershipOrganizationContext);
         if (! $canViewMemberPayments) {
             $canViewMemberPayments = \Modules\Core\Models\Unit::query()
@@ -229,6 +241,11 @@
                 <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewMembersDirectory && \Illuminate\Support\Facades\Route::has('member.directory')): ?>
                     <a class="nav-link <?php echo e(request()->routeIs('member.directory') ? 'active' : ''); ?>" href="<?php echo e(route('member.directory')); ?>">
                         <span class="nav-icon" aria-hidden="true">♙</span><span>Members</span>
+                    </a>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewUnitTransfers && \Illuminate\Support\Facades\Route::has('member.unit-transfers')): ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('member.unit-transfers') ? 'active' : ''); ?>" href="<?php echo e(route('member.unit-transfers')); ?>">
+                        <span class="nav-icon" aria-hidden="true">⇄</span><span>Unit Transfers</span>
                     </a>
                 <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canViewMembershipApplications && \Illuminate\Support\Facades\Route::has('member.membership-applications')): ?>
