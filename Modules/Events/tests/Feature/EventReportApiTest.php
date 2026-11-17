@@ -60,7 +60,11 @@ class EventReportApiTest extends TestCase
             ->assertJsonPath('data.event.id', $event->id)
             ->assertJsonPath('data.participants.total', 1)
             ->assertJsonPath('data.participants.by_type.guest', 1)
+            ->assertJsonPath('data.registrations.total', 1)
+            ->assertJsonPath('data.registrations.invited', 1)
+            ->assertJsonPath('data.registrations.registered', 0)
             ->assertJsonPath('data.passes.total', 1)
+            ->assertJsonPath('data.passes.expired', 0)
             ->assertJsonPath('data.passes.active_capacity', 3)
             ->assertJsonPath('data.passes.currently_inside', 1)
             ->assertJsonPath('data.passes.remaining_capacity', 2)
@@ -288,6 +292,8 @@ class EventReportApiTest extends TestCase
             ->getJson($this->url($organization, '/api/v1/events/reports/summary'))
             ->assertOk()
             ->assertJsonPath('data.registrations.total', 3)
+            ->assertJsonPath('data.registrations.invited', 0)
+            ->assertJsonPath('data.registrations.registered', 1)
             ->assertJsonPath('data.registrations.cancelled', 1)
             ->assertJsonPath('data.registrations.no_shows', 1)
             ->assertJsonPath('data.registrations.by_status.cancelled', 1)
@@ -298,6 +304,7 @@ class EventReportApiTest extends TestCase
             ->getJson($this->url($organization, '/api/v1/events/reports/categories?category_id='.$category->id))
             ->assertOk()
             ->assertJsonPath('data.categories.0.registrations_total', 3)
+            ->assertJsonPath('data.categories.0.registrations_registered', 1)
             ->assertJsonPath('data.categories.0.registrations_cancelled', 1)
             ->assertJsonPath('data.categories.0.no_shows', 1);
     }
@@ -400,6 +407,181 @@ class EventReportApiTest extends TestCase
         }
     }
 
+    public function test_event_detail_reports_export_filtered_csv_without_exposing_pass_token_hash(): void
+    {
+        [$organization, $user] = $this->authorizedUser();
+        [$event, $pass] = $this->eventWithPass($organization, $user);
+        EventAttendanceScan::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $event->id,
+            'event_pass_id' => $pass->id,
+            'scanned_by' => $user->id,
+            'action' => 'entry',
+            'quantity' => 1,
+            'scanned_at' => now(),
+        ]);
+
+        $registrations = $this->actingAs($user)
+            ->get($this->url($organization, "/api/v1/events/{$event->id}/reports/registrations/export?status=invited"))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $this->assertStringContainsString('Report Guest', $registrations->streamedContent());
+        $this->assertStringContainsString('report-', $registrations->streamedContent());
+
+        $attendance = $this->actingAs($user)
+            ->get($this->url($organization, "/api/v1/events/{$event->id}/reports/attendance/export?action=entry"))
+            ->assertOk();
+        $this->assertStringContainsString('entry', $attendance->streamedContent());
+
+        $passes = $this->actingAs($user)
+            ->get($this->url($organization, "/api/v1/events/{$event->id}/reports/passes/export?status=active"))
+            ->assertOk();
+        $passCsv = $passes->streamedContent();
+        $this->assertStringContainsString((string) $pass->id, $passCsv);
+        $this->assertStringNotContainsString($pass->token_hash, $passCsv);
+    }
+
+    public function test_organization_and_category_summaries_export_csv(): void
+    {
+        [$organization, $user] = $this->authorizedUser();
+        [$event] = $this->eventWithPass($organization, $user);
+        $category = EventCategory::query()->create([
+            'organization_id' => $organization->id,
+            'name' => 'Community',
+            'slug' => 'community-export-'.uniqid(),
+            'is_active' => true,
+        ]);
+        $event->update(['category_id' => $category->id]);
+
+        $organizationCsv = $this->actingAs($user)
+            ->get($this->url($organization, '/api/v1/events/reports/summary/export'))
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('events.total', $organizationCsv);
+        $this->assertStringContainsString('registrations.total', $organizationCsv);
+
+        $categoryCsv = $this->actingAs($user)
+            ->get($this->url($organization, '/api/v1/events/reports/categories/export'))
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('Community', $categoryCsv);
+        $this->assertStringContainsString('registrations_registered', $categoryCsv);
+    }
+
+    public function test_report_exports_require_report_permission(): void
+    {
+        [$organization, $user] = $this->authorizedUser('events.view');
+        [$event] = $this->eventWithPass($organization, $user);
+
+        $this->actingAs($user)
+            ->get($this->url($organization, "/api/v1/events/{$event->id}/reports/passes/export"))
+            ->assertForbidden();
+    }
+
+    public function test_organization_and_category_reports_sum_unique_attendees_per_event_and_separate_quantity_scans(): void
+    {
+        [$organization, $user] = $this->authorizedUser();
+        $category = EventCategory::query()->create([
+            'organization_id' => $organization->id,
+            'name' => 'Per Event Metrics',
+            'slug' => 'per-event-metrics-'.uniqid(),
+            'is_system' => false,
+            'is_active' => true,
+            'created_by' => $user->id,
+        ]);
+
+        [$firstEvent, $firstPass] = $this->eventWithPass($organization, $user);
+        [$secondEvent, $secondPass] = $this->eventWithPass($organization, $user);
+        $firstEvent->update(['category_id' => $category->id]);
+        $secondEvent->update(['category_id' => $category->id]);
+
+        $firstAttendee = EventPassAttendee::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $firstEvent->id,
+            'event_pass_id' => $firstPass->id,
+            'name' => 'Same Person',
+            'email' => 'same-person@example.test',
+            'category' => 'guest',
+            'status' => 'outside',
+            'entry_count' => 1,
+            'created_by' => $user->id,
+        ]);
+        $secondAttendee = EventPassAttendee::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $secondEvent->id,
+            'event_pass_id' => $secondPass->id,
+            'name' => 'Same Person',
+            'email' => 'same-person@example.test',
+            'category' => 'guest',
+            'status' => 'outside',
+            'entry_count' => 1,
+            'created_by' => $user->id,
+        ]);
+
+        $firstPass->update(['current_inside' => 0]);
+        $secondPass->update(['current_inside' => 0]);
+
+        foreach ([
+            [$firstEvent, $firstPass, $firstAttendee, 'entry', 1],
+            [$firstEvent, $firstPass, $firstAttendee, 'exit', 1],
+            [$secondEvent, $secondPass, $secondAttendee, 'entry', 1],
+        ] as [$event, $pass, $attendee, $action, $quantity]) {
+            EventAttendanceScan::query()->create([
+                'organization_id' => $organization->id,
+                'event_id' => $event->id,
+                'event_pass_id' => $pass->id,
+                'event_pass_attendee_id' => $attendee->id,
+                'scanned_by' => $user->id,
+                'action' => $action,
+                'quantity' => $quantity,
+                'scanned_at' => now(),
+            ]);
+        }
+
+        EventAttendanceScan::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $firstEvent->id,
+            'event_pass_id' => $firstPass->id,
+            'event_pass_attendee_id' => null,
+            'scanned_by' => $user->id,
+            'action' => 'entry',
+            'quantity' => 4,
+            'scanned_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson($this->url($organization, '/api/v1/events/reports/summary'))
+            ->assertOk()
+            ->assertJsonPath('data.registrations.total', 2)
+            ->assertJsonPath('data.registrations.invited', 2)
+            ->assertJsonPath('data.registrations.by_status.invited', 2)
+            ->assertJsonPath('data.passes.unique_individual_attendees_scanned', 2)
+            ->assertJsonPath('data.attendance.identity_tracking.scan_records', 3)
+            ->assertJsonPath('data.attendance.identity_tracking.unique_individual_attendees_scanned', 2)
+            ->assertJsonPath('data.attendance.quantity_tracking.scan_records', 1)
+            ->assertJsonPath('data.attendance.quantity_tracking.entry_quantity_total', 4)
+            ->assertJsonPath('data.attendance.entry_quantity_total', 6)
+            ->assertJsonPath('data.data_quality.passes_with_occupancy_mismatch', 0)
+            ->assertJsonPath('data.data_quality.occupancy_reconciliation', 'consistent');
+
+        $this->actingAs($user)
+            ->getJson($this->url($organization, '/api/v1/events/reports/categories?category_id='.$category->id))
+            ->assertOk()
+            ->assertJsonPath('data.categories.0.registrations_total', 2)
+            ->assertJsonPath('data.categories.0.registrations_invited', 2)
+            ->assertJsonPath('data.categories.0.registrations_by_status.invited', 2)
+            ->assertJsonPath('data.categories.0.unique_individual_attendees_scanned', 2)
+            ->assertJsonPath('data.categories.0.identity_scan_records', 3)
+            ->assertJsonPath('data.categories.0.identity_entry_records', 2)
+            ->assertJsonPath('data.categories.0.identity_exit_records', 1)
+            ->assertJsonPath('data.categories.0.quantity_scan_records', 1)
+            ->assertJsonPath('data.categories.0.quantity_entry_movements', 1)
+            ->assertJsonPath('data.categories.0.quantity_entry_total', 4)
+            ->assertJsonPath('data.categories.0.scan_records_total', 4)
+            ->assertJsonPath('data.categories.0.entry_quantity_total', 6)
+            ->assertJsonPath('data.categories.0.passes_with_occupancy_mismatch', 0);
+    }
+
     public function test_unit_scoped_report_permission_limits_event_and_organization_reports(): void
     {
         $organization = $this->organization('org-report-unit-scope');
@@ -451,6 +633,122 @@ class EventReportApiTest extends TestCase
             ->getJson($baseUrl.'/reports/categories')
             ->assertOk()
             ->assertJsonPath('data.categories.0.event_count', 1);
+
+        $summaryCsv = $this->actingAs($user)
+            ->get($baseUrl.'/reports/summary/export')
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('events.total', $summaryCsv);
+        $this->assertStringNotContainsString('Other Unit Report Event', $summaryCsv);
+    }
+
+    public function test_unit_scoped_report_permission_cannot_access_other_units_detail_reports_or_exports(): void
+    {
+        $organization = $this->organization('org-report-detail-unit-scope');
+        $assignedUnit = Unit::factory()->create(['organization_id' => $organization->id]);
+        $otherUnit = Unit::factory()->create(['organization_id' => $organization->id]);
+        $user = User::factory()->create();
+        $membership = OrganizationMembership::query()->create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
+
+        $permission = Permission::query()->firstOrCreate(
+            ['code' => 'events.reports.view'],
+            ['module' => 'events', 'name' => 'View Event Reports'],
+        );
+        $role = Role::query()->create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit Detail Report Viewer',
+            'code' => 'unit_detail_report_viewer_'.uniqid(),
+        ]);
+        $role->permissions()->attach($permission->id);
+        app(RoleAssignmentService::class)->assign(
+            $membership,
+            $role,
+            new AuthorizationContext((int) $organization->id, (int) $assignedUnit->id),
+        );
+
+        $assignedEvent = $this->createUnitScopedReportEvent($organization, $user, $assignedUnit, 'Assigned Unit Detail Report Event');
+        $otherEvent = $this->createUnitScopedReportEvent($organization, $user, $otherUnit, 'Other Unit Detail Report Event');
+        $this->createUnitScopedReportRecords($organization, $user, $assignedEvent);
+        $this->createUnitScopedReportRecords($organization, $user, $otherEvent);
+
+        $baseUrl = 'http://'.$organization->slug.'.example.test/api/v1/events';
+        $visibleEventPaths = [
+            '/'.$assignedEvent->id.'/reports/registrations',
+            '/'.$assignedEvent->id.'/reports/attendance',
+            '/'.$assignedEvent->id.'/reports/passes',
+        ];
+        $hiddenEventPaths = [
+            '/'.$otherEvent->id.'/reports/registrations',
+            '/'.$otherEvent->id.'/reports/attendance',
+            '/'.$otherEvent->id.'/reports/passes',
+        ];
+
+        foreach ($visibleEventPaths as $path) {
+            $this->actingAs($user)->getJson($baseUrl.$path)->assertOk();
+        }
+
+        foreach ($hiddenEventPaths as $path) {
+            $this->actingAs($user)->getJson($baseUrl.$path)->assertNotFound();
+        }
+
+        $visibleExportPaths = [
+            '/'.$assignedEvent->id.'/reports/registrations/export',
+            '/'.$assignedEvent->id.'/reports/attendance/export',
+            '/'.$assignedEvent->id.'/reports/passes/export',
+        ];
+        $hiddenExportPaths = [
+            '/'.$otherEvent->id.'/reports/registrations/export',
+            '/'.$otherEvent->id.'/reports/attendance/export',
+            '/'.$otherEvent->id.'/reports/passes/export',
+        ];
+
+        foreach ($visibleExportPaths as $path) {
+            $this->actingAs($user)->get($baseUrl.$path)->assertOk();
+        }
+
+        foreach ($hiddenExportPaths as $path) {
+            $this->actingAs($user)->get($baseUrl.$path)->assertNotFound();
+        }
+    }
+
+    private function createUnitScopedReportRecords(Organization $organization, User $user, Event $event): void
+    {
+        $participant = EventParticipant::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $event->id,
+            'participant_type' => 'guest',
+            'name' => 'Report Scope Guest',
+            'email' => 'report-scope-'.uniqid().'@example.test',
+            'status' => 'registered',
+            'invited_at' => now(),
+            'registered_at' => now(),
+        ]);
+
+        $pass = EventPass::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $event->id,
+            'event_participant_id' => $participant->id,
+            'token_hash' => hash('sha256', bin2hex(random_bytes(32))),
+            'status' => 'active',
+            'capacity' => 1,
+            'current_inside' => 0,
+            'issued_at' => now(),
+            'issued_by' => $user->id,
+        ]);
+
+        EventAttendanceScan::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $event->id,
+            'event_pass_id' => $pass->id,
+            'scanned_by' => $user->id,
+            'action' => 'entry',
+            'quantity' => 1,
+            'scanned_at' => now(),
+        ]);
     }
 
     private function createUnitScopedReportEvent(Organization $organization, User $user, \Modules\Core\Models\Unit $unit, string $title): Event

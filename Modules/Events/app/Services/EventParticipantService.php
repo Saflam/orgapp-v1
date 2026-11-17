@@ -206,14 +206,17 @@ class EventParticipantService
             abort(404);
         }
 
-        if (! $event->ends_at || ! $event->ends_at->isPast()) {
-            throw ValidationException::withMessages([
-                'participant' => 'A participant can only be marked as a no-show after the event has ended.',
-            ]);
-        }
-
         return DB::transaction(function () use ($organization, $event, $participant): EventParticipant {
             $lockedEvent = Event::query()->where('organization_id', $organization->id)->lockForUpdate()->findOrFail($event->id);
+
+            // Re-check the cutoff against the locked event row. The event may have
+            // been rescheduled after the controller loaded the original model.
+            if (! $lockedEvent->ends_at || ! $lockedEvent->ends_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'participant' => 'A participant can only be marked as a no-show after the event has ended.',
+                ]);
+            }
+
             $lockedParticipant = EventParticipant::query()
                 ->where('organization_id', $organization->id)
                 ->where('event_id', $lockedEvent->id)

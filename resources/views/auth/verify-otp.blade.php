@@ -31,6 +31,13 @@
             <form method="POST" action="{{ route('login.verify') }}" class="space-y-5">
                 @csrf
                 <x-ui.field label="Six-digit code" name="code" type="text" required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" :error="$errors->first('code')" />
+                <label class="flex items-start gap-3 text-sm text-slate-700">
+                    <input type="checkbox" name="remember" value="1" @checked(old('remember')) class="mt-0.5 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600">
+                    <span>
+                        <span class="font-semibold">Keep me signed in on this browser</span>
+                        <span class="mt-0.5 block text-xs leading-5 text-slate-500">Use this on your personal device. You will remain signed in after the normal session expires until you sign out.</span>
+                    </span>
+                </label>
                 <x-ui.button type="submit" size="lg" class="w-full">Verify and sign in <span aria-hidden="true">→</span></x-ui.button>
             </form>
             <div class="mt-6 border-t border-slate-100 pt-5 text-center">

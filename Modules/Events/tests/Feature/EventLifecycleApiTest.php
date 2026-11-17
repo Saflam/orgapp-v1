@@ -128,6 +128,116 @@ class EventLifecycleApiTest extends TestCase
         ]);
     }
 
+    public function test_participant_cannot_be_marked_as_no_show_before_event_ends(): void
+    {
+        [$organization, $user] = $this->authorizedUser('events.participants.no_show');
+        $event = $this->event($organization, $user);
+        $participant = $this->participant($organization, $event);
+
+        $this->actingAs($user)
+            ->postJson($this->url($organization, "/api/v1/events/{$event->id}/participants/{$participant->id}/no-show"))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['participant']);
+
+        $this->assertDatabaseHas('event_participants', [
+            'id' => $participant->id,
+            'status' => 'invited',
+        ]);
+    }
+
+    public function test_participant_with_attendance_history_cannot_be_marked_as_no_show(): void
+    {
+        [$organization, $user] = $this->authorizedUser('events.participants.no_show');
+        $event = $this->event($organization, $user);
+        $event->forceFill([
+            'starts_at' => now()->subDays(2),
+            'ends_at' => now()->subDay(),
+        ])->save();
+        $participant = $this->participant($organization, $event);
+        $pass = $this->pass($organization, $event, $user, participant: $participant);
+
+        EventAttendanceScan::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $event->id,
+            'event_pass_id' => $pass->id,
+            'event_pass_attendee_id' => null,
+            'scanned_by' => $user->id,
+            'action' => 'entry',
+            'quantity' => 1,
+            'scanned_at' => now()->subDays(2),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson($this->url($organization, "/api/v1/events/{$event->id}/participants/{$participant->id}/no-show"))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['participant']);
+
+        $this->assertDatabaseHas('event_participants', [
+            'id' => $participant->id,
+            'status' => 'invited',
+        ]);
+    }
+
+    public function test_marking_a_participant_as_no_show_is_idempotent(): void
+    {
+        [$organization, $user] = $this->authorizedUser('events.participants.no_show');
+        $event = $this->event($organization, $user);
+        $event->forceFill([
+            'starts_at' => now()->subDays(2),
+            'ends_at' => now()->subDay(),
+        ])->save();
+        $participant = $this->participant($organization, $event);
+        $endpoint = $this->url($organization, "/api/v1/events/{$event->id}/participants/{$participant->id}/no-show");
+
+        $this->actingAs($user)->postJson($endpoint)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'no_show');
+        $this->actingAs($user)->postJson($endpoint)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'no_show');
+
+        $this->assertDatabaseHas('event_participants', [
+            'id' => $participant->id,
+            'status' => 'no_show',
+        ]);
+    }
+
+    public function test_ended_event_passes_are_expired_by_the_scheduled_command_and_future_passes_are_untouched(): void
+    {
+        [$organization, $user] = $this->authorizedUser('events.invitations.send');
+
+        $endedEvent = $this->event($organization, $user);
+        $endedEvent->forceFill(['ends_at' => now()->subMinute()])->save();
+        $endedPass = $this->pass($organization, $endedEvent, $user);
+
+        $futureEvent = $this->event($organization, $user);
+        $futureEvent->forceFill(['ends_at' => now()->addHour()])->save();
+        $futurePass = $this->pass($organization, $futureEvent, $user);
+
+        $this->artisan('events:expire-passes')->assertExitCode(0);
+
+        $this->assertDatabaseHas('event_passes', ['id' => $endedPass->id, 'status' => 'expired']);
+        $this->assertDatabaseHas('event_passes', ['id' => $futurePass->id, 'status' => 'active']);
+
+        // Re-running the scheduled command is idempotent.
+        $this->artisan('events:expire-passes')->assertExitCode(0);
+        $this->assertDatabaseHas('event_passes', ['id' => $endedPass->id, 'status' => 'expired']);
+    }
+
+    public function test_pass_validation_expires_a_pass_immediately_when_its_event_has_ended(): void
+    {
+        [$organization, $user] = $this->authorizedUser('events.invitations.send');
+        $event = $this->event($organization, $user);
+        $event->forceFill(['ends_at' => now()->subSecond()])->save();
+        $pass = $this->pass($organization, $event, $user);
+
+        $this->postJson($this->url($organization, '/api/v1/public/event-passes/validate'), [
+            'token' => $pass->token_for_test,
+        ])->assertNotFound();
+
+        $this->assertDatabaseHas('event_passes', ['id' => $pass->id, 'status' => 'expired']);
+    }
+
     public function test_revoked_pass_cannot_be_validated(): void
     {
         [$organization, $user] = $this->authorizedUser('events.invitations.send');
@@ -252,7 +362,7 @@ class EventLifecycleApiTest extends TestCase
     private function pass(Organization $organization, Event $event, User $user, ?EventParticipant $participant = null, int $currentInside = 0): EventPass
     {
         $participant ??= $this->participant($organization, $event);
-        $token = str_repeat('l', 64);
+        $token = bin2hex(random_bytes(32));
         $pass = EventPass::query()->create([
             'organization_id' => $organization->id,
             'event_id' => $event->id,

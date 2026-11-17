@@ -5,6 +5,8 @@ namespace Modules\Events\Tests\Feature;
 use App\Models\OrganizationMembership;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event as EventFacade;
 use Illuminate\Support\Facades\Notification;
 use Modules\Core\Models\Organization;
@@ -28,6 +30,33 @@ class EventAttendanceApiTest extends TestCase
     {
         parent::setUp();
         config(['app.deployment_mode' => 'multi', 'app.organization_base_domain' => 'example.test']);
+    }
+
+    public function test_pass_token_lookup_does_not_establish_a_repeatable_read_snapshot_inside_scan_transaction(): void
+    {
+        [$organization, $user] = $this->authorizedUser();
+        [, , $token] = $this->pass($organization, $user, 1);
+        $baselineTransactionLevel = DB::connection()->transactionLevel();
+        $lookupTransactionLevels = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$lookupTransactionLevels, $baselineTransactionLevel): void {
+            if (str_contains(strtolower($query->sql), 'event_passes')
+                && str_contains(strtolower($query->sql), 'token_hash')) {
+                $lookupTransactionLevels[] = DB::connection($query->connectionName)->transactionLevel();
+            }
+        });
+
+        $this->actingAs($user)->postJson(
+            $this->url($organization, '/api/v1/events/attendance/scan'),
+            ['token' => $token, 'action' => 'entry'],
+        )->assertOk();
+
+        $this->assertNotEmpty($lookupTransactionLevels);
+        $this->assertSame(
+            array_fill(0, count($lookupTransactionLevels), $baselineTransactionLevel),
+            $lookupTransactionLevels,
+            'Token-to-event lookup must happen before the attendance transaction begins.',
+        );
     }
 
     public function test_scanner_can_record_entry_and_exit_and_reentry(): void

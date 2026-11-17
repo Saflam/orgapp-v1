@@ -19,16 +19,20 @@ class EventAttendanceService
             throw ValidationException::withMessages(['token' => 'The pass token is invalid.']);
         }
 
-        return DB::transaction(function () use ($organization, $token, $action, $quantity, $scannerId, $attendeeIds): array {
-            $passLookup = EventPass::query()
-                ->where('organization_id', $organization->id)
-                ->where('token_hash', hash('sha256', $token))
-                ->first(['id', 'event_id']);
+        // Resolve the immutable event_id before opening the transaction. On MySQL's
+        // default REPEATABLE READ isolation, a non-locking lookup inside the transaction
+        // would establish a snapshot before waiting for the event lock. A later aggregate
+        // read could then miss a scan committed by the transaction that held that lock.
+        $passLookup = EventPass::query()
+            ->where('organization_id', $organization->id)
+            ->where('token_hash', hash('sha256', $token))
+            ->first(['id', 'event_id']);
 
-            if (! $passLookup) {
-                abort(404, 'The pass was not found for this organization.');
-            }
+        if (! $passLookup) {
+            abort(404, 'The pass was not found for this organization.');
+        }
 
+        return DB::transaction(function () use ($organization, $passLookup, $action, $quantity, $scannerId, $attendeeIds): array {
             // All admission transactions lock event first, then pass, to serialize venue capacity across passes.
             $event = \Modules\Events\Models\Event::query()
                 ->where('organization_id', $organization->id)

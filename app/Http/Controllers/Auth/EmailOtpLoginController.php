@@ -88,12 +88,13 @@ class EmailOtpLoginController
     {
         $validated = $request->validate([
             'code' => ['required', 'digits:6'],
+            'remember' => ['sometimes', 'boolean'],
         ]);
 
         $challengeId = $request->session()->get('auth.otp_challenge_id');
         $challenge = OtpChallenge::query()->findOrFail($challengeId);
 
-        $authenticationService->verifyEmailOtp($challenge, $validated['code']);
+        $authenticationService->verifyEmailOtp($challenge, $validated['code'], (bool) ($validated['remember'] ?? false));
 
         $request->session()->regenerate();
         $request->session()->forget(['auth.otp_challenge_id', 'auth.otp_email']);

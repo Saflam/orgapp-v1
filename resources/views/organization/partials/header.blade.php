@@ -44,7 +44,7 @@
 
             @if (!empty($authenticatedUser))
                 @if (!empty($canManageOrganization))
-                    <a href="{{ route('core.organization.settings') }}" class="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-stone-100">Manage Organization</a>
+                    <a href="{{ route('organization.dashboard') }}" class="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-stone-100">Manage Organization</a>
                 @endif
                 <a href="{{ $isMember ? route('organization.member.profile') : route('organization.membership.apply') }}" class="inline-flex min-h-10 items-center justify-center rounded-full px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90" style="background: var(--org-primary, {{ $primaryColor ?? '#174b3d' }})">{{ $isMember ? 'Member Profile' : (($hasDraftMembershipApplication ?? false) ? 'Continue Application' : ($hasPendingMembershipApplication ? 'Application in Progress' : 'Apply Membership')) }}</a>
                 <details class="relative">

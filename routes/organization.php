@@ -65,11 +65,9 @@ Route::middleware(['organization'])->group(function () {
                     ->where('status', 'active')
                     ->exists(),
                 'canManageOrganization' => auth()->check() && (
-                    auth()->user()->is_system_admin || app(AuthorizationService::class)->can(
-                        auth()->user(),
-                        'organization.settings.manage',
-                        new AuthorizationContext($organization->id),
-                    )
+                    auth()->user()->is_system_admin
+                    || app(\Modules\Core\Services\OrganizationManagementAccessService::class)
+                        ->canManageAnyModule(auth()->user(), $organization)
                 ),
                 'eventsModuleEnabled' => \Illuminate\Support\Facades\DB::table('organization_modules')
                     ->where('organization_id', $organization->id)
@@ -173,14 +171,7 @@ Route::middleware(['organization'])->group(function () {
 
     });
 
-    // Dashboard access uses its own middleware, which returns 401 for guests
-    // and 403 when an authenticated user belongs to a different organization.
-    Route::middleware('organization.access')->get('/dashboard', function (CurrentOrganization $currentOrganization) {
-        $organization = $currentOrganization->get();
-
-        return response()->json([
-            'organization_id' => $organization->id,
-            'organization_slug' => $organization->slug,
-        ]);
-    })->name('organization.dashboard');
+    Route::middleware(['auth', 'organization.access'])
+        ->get('/dashboard', \Modules\Core\Livewire\Organizations\OrganizationAdminDashboard::class)
+        ->name('organization.dashboard');
 });

@@ -14,6 +14,7 @@ use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Services\AuthorizationService;
 use Modules\Events\Services\EventManagementService;
 use Modules\Events\Services\EventReportService;
+use Modules\Events\Services\EventReportExportService;
 use Modules\Events\Models\Event;
 
 class EventReportController extends Controller
@@ -21,6 +22,7 @@ class EventReportController extends Controller
     public function __construct(
         private readonly EventManagementService $events,
         private readonly EventReportService $reports,
+        private readonly EventReportExportService $exports,
     ) {
     }
 
@@ -55,6 +57,59 @@ class EventReportController extends Controller
         return response()->json([
             'data' => $this->reports->categorySummary($organization, $filters),
         ]);
+    }
+
+    public function exportOrganizationSummary(Request $request)
+    {
+        $organization = $this->organization();
+        $filters = $this->visibleFilters($request, $organization);
+
+        return $this->exports->organizationSummary($organization, $filters);
+    }
+
+    public function exportCategories(Request $request)
+    {
+        $organization = $this->organization();
+        $filters = $this->visibleFilters($request, $organization);
+
+        return $this->exports->categories($organization, $filters);
+    }
+
+    public function exportRegistrations(Request $request, int $event)
+    {
+        $organization = $this->organization();
+        $this->assertUserHasAnyReportPermission($request, $organization);
+        $record = $this->events->queryVisibleTo($organization, $request->user(), 'events.reports.view')->findOrFail($event);
+        $filters = $this->validatedDetailFilters($request, [
+            'status' => ['sometimes', 'nullable', Rule::in(['invited', 'registered', 'cancelled', 'no_show'])],
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+        ]);
+
+        return $this->exports->registrations($organization, $record, $filters);
+    }
+
+    public function exportAttendance(Request $request, int $event)
+    {
+        $organization = $this->organization();
+        $this->assertUserHasAnyReportPermission($request, $organization);
+        $record = $this->events->queryVisibleTo($organization, $request->user(), 'events.reports.view')->findOrFail($event);
+        $filters = $this->validatedDetailFilters($request, [
+            'action' => ['sometimes', 'nullable', Rule::in(['entry', 'exit'])],
+        ]);
+
+        return $this->exports->attendance($organization, $record, $filters);
+    }
+
+    public function exportPasses(Request $request, int $event)
+    {
+        $organization = $this->organization();
+        $this->assertUserHasAnyReportPermission($request, $organization);
+        $record = $this->events->queryVisibleTo($organization, $request->user(), 'events.reports.view')->findOrFail($event);
+        $filters = $this->validatedDetailFilters($request, [
+            'status' => ['sometimes', 'nullable', Rule::in(['active', 'revoked', 'expired'])],
+        ]);
+
+        return $this->exports->passes($organization, $record, $filters);
     }
 
 

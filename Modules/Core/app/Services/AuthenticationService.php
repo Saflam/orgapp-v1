@@ -45,6 +45,7 @@ class AuthenticationService
     public function verifyEmailOtp(
         OtpChallenge $challenge,
         string $code,
+        bool $remember = false,
     ): User {
         if ($challenge->purpose !== 'login') {
             throw ValidationException::withMessages([
@@ -66,7 +67,7 @@ class AuthenticationService
 
         $user = $challenge->user;
 
-        Auth::login($user);
+        Auth::login($user, $remember);
 
         $this->loginActivityService->recordLogin(
             $user,

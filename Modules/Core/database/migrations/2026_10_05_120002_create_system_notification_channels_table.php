@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->string('channel', 50)->unique('snc_channel_unique');
             $table->boolean('is_enabled')->default(false);
-            $table->json('credentials')->nullable();
+            $table->longText('credentials')->nullable();
             $table->timestamps();
         });
 
@@ -20,7 +20,7 @@ return new class extends Migration
             $table->boolean('use_system_default')
                 ->default(false)
                 ->after('is_enabled');
-            $table->json('credentials')->nullable()->after('use_system_default');
+            $table->longText('credentials')->nullable()->after('use_system_default');
             $table->dropColumn('configuration');
         });
 

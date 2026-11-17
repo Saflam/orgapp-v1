@@ -6,6 +6,9 @@ use App\Models\OrganizationMembership;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Core\Models\Organization;
+use Modules\Core\Models\Permission;
+use Modules\Core\Models\Role;
+use Modules\Core\Services\RoleAssignmentService;
 use Tests\TestCase;
 
 class OrganizationAccessMiddlewareTest extends TestCase
@@ -26,11 +29,27 @@ class OrganizationAccessMiddlewareTest extends TestCase
 
         $user = User::factory()->create();
 
-        OrganizationMembership::create([
+        $membership = OrganizationMembership::create([
             'organization_id' => $organization->id,
             'user_id' => $user->id,
             'status' => 'active',
         ]);
+
+        // The current /dashboard route renders the organization admin dashboard,
+        // which intentionally requires a management permission in addition to
+        // active organization membership.
+        $permission = Permission::query()->firstOrCreate(
+            ['code' => 'organization.settings.manage'],
+            ['module' => 'Core', 'name' => 'Manage organization settings'],
+        );
+        $role = Role::query()->create([
+            'organization_id' => $organization->id,
+            'name' => 'Organization Settings Manager',
+            'code' => 'organization_settings_manager_' . uniqid(),
+            'is_system' => false,
+        ]);
+        $role->permissions()->attach($permission->id);
+        app(RoleAssignmentService::class)->assign($membership, $role, $organization);
 
         $this->actingAs($user);
 
@@ -87,6 +106,8 @@ class OrganizationAccessMiddlewareTest extends TestCase
             'http://org1.lvh.me:8000/dashboard'
         );
 
-        $response->assertUnauthorized();
+        // This is a browser (web) route protected by Laravel's auth middleware,
+        // so guests are redirected to the login page rather than receiving an API 401.
+        $response->assertRedirect(route('login')); 
     }
 }

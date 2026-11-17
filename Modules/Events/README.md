@@ -476,3 +476,18 @@ True concurrency guarantees still require integration testing with separate proc
 - Event list/detail queries use Core's `AuthorizationService` for organization-wide or exact-unit `events.view` authorization. Exact-unit assignments do not imply child-unit access.
 
 Authorization scope note: the list/detail query integration uses Core's `AuthorizationService` for organization-wide or exact-unit `events.view` access; exact-unit assignments do not imply access to child units. The module's current tests passing is not, by itself, proof that every participant, pass, attendance, volunteer, and report endpoint enforces endpoint-wide unit authorization. Keep any additional route-level unit-scope verification on the security/deployment checklist rather than reopening queue implementation work.
+
+
+## Reporting exports
+
+Report exports are streamed as UTF-8 CSV files (with a BOM for spreadsheet compatibility). CSV files can be opened in Microsoft Excel; native `.xlsx` and PDF generation are not part of this export layer. Detailed exports are streamed in chunks and use the same report filters as their JSON endpoints.
+
+All export routes require `events.reports.view` at the applicable organization or unit scope, and organization/category exports are restricted to events visible to the requesting user.
+
+- `GET /api/v1/events/reports/summary/export` — organization summary metrics (supports `from`, `to`, `unit_id`, `category_id`, and `status`).
+- `GET /api/v1/events/reports/categories/export` — one row per category (supports the same filters).
+- `GET /api/v1/events/{event}/reports/registrations/export` — participant registrations (supports `from`, `to`, `status`, and `search`).
+- `GET /api/v1/events/{event}/reports/attendance/export` — attendance scans (supports `from`, `to`, and `action`).
+- `GET /api/v1/events/{event}/reports/passes/export` — event passes (supports `from`, `to`, and `status`).
+
+Pass exports intentionally omit the pass token hash. CSV text cells beginning with spreadsheet formula characters are escaped to reduce CSV formula-injection risk.

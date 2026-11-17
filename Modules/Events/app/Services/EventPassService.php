@@ -35,6 +35,10 @@ class EventPassService
             throw ValidationException::withMessages(['event' => 'Passes can only be issued for published events.']);
         }
 
+        if ($event->ends_at !== null && $event->ends_at->lessThanOrEqualTo(now())) {
+            throw ValidationException::withMessages(['event' => 'Passes cannot be issued after the event has ended.']);
+        }
+
         if (in_array($participant->status, ['cancelled', 'declined'], true)) {
             throw ValidationException::withMessages(['participant' => 'A cancelled or declined participant cannot receive a pass.']);
         }
@@ -150,6 +154,10 @@ class EventPassService
 
         if ($event->status !== EventStatus::Published) {
             throw ValidationException::withMessages(['event' => 'Pass delivery can only be retried for a published event.']);
+        }
+
+        if ($event->ends_at !== null && $event->ends_at->lessThanOrEqualTo(now())) {
+            throw ValidationException::withMessages(['event' => 'Pass delivery cannot be retried after the event has ended.']);
         }
 
         $participant = $pass->participant;
@@ -275,14 +283,20 @@ class EventPassService
         $pass = EventPass::query()
             ->where('organization_id', $organization->id)
             ->where('token_hash', hash('sha256', $token))
-            ->where('status', 'active')
             ->with(['event', 'participant'])
             ->first();
 
-        if ($pass && $pass->event->ends_at && $pass->event->ends_at->isPast()) {
+        if (! $pass) {
             return null;
         }
 
-        return $pass;
+        if ($pass->status === 'active'
+            && $pass->event?->ends_at !== null
+            && $pass->event->ends_at->lessThanOrEqualTo(now())) {
+            app(EventPassExpiryService::class)->expireEvent((int) $pass->event_id);
+            return null;
+        }
+
+        return $pass->status === 'active' ? $pass : null;
     }
 }

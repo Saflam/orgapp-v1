@@ -2,6 +2,7 @@
 
 namespace Modules\Events\Tests\Feature;
 
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Events\Notifications\EventLifecycleNotification;
@@ -32,6 +33,9 @@ class EventNotificationQueueTest extends TestCase
         $serialized = serialize($job);
 
         $this->assertInstanceOf(ShouldQueue::class, $job);
+        $this->assertInstanceOf(ShouldBeUnique::class, $job);
+        $this->assertSame('event-pass-delivery:123', $job->uniqueId());
+        $this->assertSame(900, $job->uniqueFor);
         $this->assertSame(4, $job->tries);
         $this->assertSame([30, 120, 300], $job->backoff);
         $this->assertTrue($job->afterCommit ?? false);

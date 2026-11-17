@@ -36,7 +36,9 @@ Route::middleware(['auth', 'organization', 'organization.access', 'module:Events
         Route::middleware('permission:events.manage')->delete('/categories/{category}', [EventCategoryController::class, 'destroy'])->whereNumber('category')->name('categories.destroy');
 
         Route::get('/reports/summary', [EventReportController::class, 'organizationSummary'])->name('reports.summary');
+        Route::get('/reports/summary/export', [EventReportController::class, 'exportOrganizationSummary'])->name('reports.summary.export');
         Route::get('/reports/categories', [EventReportController::class, 'categories'])->name('reports.categories');
+        Route::get('/reports/categories/export', [EventReportController::class, 'exportCategories'])->name('reports.categories.export');
 
         Route::middleware('permission:events.view')->get('/{event}', [EventController::class, 'show'])->whereNumber('event')->name('show');
         Route::middleware('permission:events.manage')->put('/{event}', [EventController::class, 'update'])->whereNumber('event')->name('update');
@@ -45,8 +47,11 @@ Route::middleware(['auth', 'organization', 'organization.access', 'module:Events
         Route::middleware('permission:events.view')->get('/{event}/participants', [EventParticipantController::class, 'index'])->whereNumber('event')->name('participants.index');
         Route::get('/{event}/report', [EventReportController::class, 'summary'])->whereNumber('event')->name('report.summary');
         Route::get('/{event}/reports/registrations', [EventReportController::class, 'registrations'])->whereNumber('event')->name('reports.registrations');
+        Route::get('/{event}/reports/registrations/export', [EventReportController::class, 'exportRegistrations'])->whereNumber('event')->name('reports.registrations.export');
         Route::get('/{event}/reports/attendance', [EventReportController::class, 'attendance'])->whereNumber('event')->name('reports.attendance');
+        Route::get('/{event}/reports/attendance/export', [EventReportController::class, 'exportAttendance'])->whereNumber('event')->name('reports.attendance.export');
         Route::get('/{event}/reports/passes', [EventReportController::class, 'passes'])->whereNumber('event')->name('reports.passes');
+        Route::get('/{event}/reports/passes/export', [EventReportController::class, 'exportPasses'])->whereNumber('event')->name('reports.passes.export');
         Route::middleware('permission:events.invitations.send')->post('/{event}/participants', [EventParticipantController::class, 'store'])->whereNumber('event')->name('participants.store');
         Route::middleware('permission:events.invitations.send')->post('/{event}/participants/{participant}/pass', [EventPassController::class, 'issue'])->whereNumber('event')->whereNumber('participant')->name('participants.pass.issue');
         Route::middleware('permission:events.invitations.send')->get('/{event}/pass-deliveries', [EventPassController::class, 'deliveryStatus'])->whereNumber('event')->name('passes.delivery-status');

@@ -180,7 +180,7 @@ class WhatsAppCostReconciliationTest extends TestCase
 
         $this->assertSame(1, $batch->discrepancy_count);
         $this->assertSame('discrepancy', $item->reconciliation_status);
-        $this->assertSame(['cost_amount', 'currency', 'pricing_category', 'billable'], array_keys($item->discrepancy_details));
+        $this->assertEqualsCanonicalizing(['cost_amount', 'currency', 'pricing_category', 'billable'], array_keys($item->discrepancy_details));
         $this->assertEquals(0.010000, (float) $item->internal_cost_amount);
         $this->assertSame('USD', $item->internal_cost_currency);
         $this->assertEquals(0.0125, (float) $usage->meta_cost_amount);

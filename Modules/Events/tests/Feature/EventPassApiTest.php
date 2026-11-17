@@ -134,6 +134,67 @@ class EventPassApiTest extends TestCase
         $this->assertFalse(Storage::disk('local')->exists($path));
     }
 
+    public function test_delivery_job_expires_a_pass_and_skips_email_when_event_has_ended(): void
+    {
+        [$organization, $user] = $this->authorizedUser();
+        $event = $this->event($organization, $user);
+        $event->forceFill(['ends_at' => now()->subMinute()])->save();
+        $participant = $this->participant($organization, $event, 'expired@example.test');
+        $pass = EventPass::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $event->id,
+            'event_participant_id' => $participant->id,
+            'token_hash' => hash('sha256', str_repeat('e', 64)),
+            'status' => 'active',
+            'capacity' => 1,
+            'current_inside' => 0,
+            'issued_at' => now()->subHour(),
+            'issued_by' => $user->id,
+            'notification_delivery_status' => 'queued',
+        ]);
+        $path = 'events/pass-delivery/expired-artifact.enc';
+        Storage::disk('local')->put($path, Crypt::encryptString('<svg></svg>'));
+
+        (new DeliverEventPassEmail($pass->id, $path))->handle();
+
+        $this->assertDatabaseHas('event_passes', [
+            'id' => $pass->id,
+            'status' => 'expired',
+            'notification_delivery_status' => 'cancelled',
+        ]);
+        $this->assertFalse(Storage::disk('local')->exists($path));
+        Notification::assertNothingSent();
+    }
+
+    public function test_terminal_failure_does_not_overwrite_a_completed_or_cancelled_delivery(): void
+    {
+        [$organization, $user] = $this->authorizedUser();
+        $event = $this->event($organization, $user);
+        foreach (['sent', 'cancelled'] as $deliveryStatus) {
+            $participant = $this->participant($organization, $event, $deliveryStatus.'@example.test');
+            $pass = EventPass::query()->create([
+                'organization_id' => $organization->id,
+                'event_id' => $event->id,
+                'event_participant_id' => $participant->id,
+                'token_hash' => hash('sha256', $deliveryStatus.str_repeat('x', 64)),
+                'status' => 'active',
+                'capacity' => 1,
+                'current_inside' => 0,
+                'issued_at' => now(),
+                'issued_by' => $user->id,
+                'notification_delivery_status' => $deliveryStatus,
+            ]);
+
+            (new DeliverEventPassEmail($pass->id, 'events/pass-delivery/'.$deliveryStatus.'.enc'))
+                ->failed(new \RuntimeException('Late terminal failure callback'));
+
+            $this->assertDatabaseHas('event_passes', [
+                'id' => $pass->id,
+                'notification_delivery_status' => $deliveryStatus,
+            ]);
+        }
+    }
+
     public function test_failed_delivery_can_be_retried_with_a_rotated_token(): void
     {
         [$organization, $user] = $this->authorizedUser();

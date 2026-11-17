@@ -563,7 +563,9 @@
                     <h3 class="text-base font-bold text-slate-900">{{ $profileSection['title'] }}</h3>
                     <div class="mt-3">
                         @include($profileSection['view'], $profileSection['data'])
-                        @include($profileSection['edit_view'], array_merge($profileSection['data'], ['module' => $profileSection['module']]))
+                        @if (filled($profileSection['edit_view'] ?? null))
+                            @include($profileSection['edit_view'], array_merge($profileSection['data'], ['module' => $profileSection['module']]))
+                        @endif
                     </div>
                 </article>
             @endforeach

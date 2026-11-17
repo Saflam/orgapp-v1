@@ -1,0 +1,118 @@
+--- a/Modules/Events/tests/Feature/EventReportApiTest.php
++++ b/Modules/Events/tests/Feature/EventReportApiTest.php
+@@ -642,6 +642,115 @@
+         $this->assertStringNotContainsString('Other Unit Report Event', $summaryCsv);
+     }
+ 
++    public function test_unit_scoped_report_permission_cannot_access_other_units_detail_reports_or_exports(): void
++    {
++        $organization = $this->organization('org-report-detail-unit-scope');
++        $assignedUnit = Unit::factory()->create(['organization_id' => $organization->id]);
++        $otherUnit = Unit::factory()->create(['organization_id' => $organization->id]);
++        $user = User::factory()->create();
++        $membership = OrganizationMembership::query()->create([
++            'organization_id' => $organization->id,
++            'user_id' => $user->id,
++            'status' => 'active',
++        ]);
++
++        $permission = Permission::query()->firstOrCreate(
++            ['code' => 'events.reports.view'],
++            ['module' => 'events', 'name' => 'View Event Reports'],
++        );
++        $role = Role::query()->create([
++            'organization_id' => $organization->id,
++            'name' => 'Unit Detail Report Viewer',
++            'code' => 'unit_detail_report_viewer_'.uniqid(),
++        ]);
++        $role->permissions()->attach($permission->id);
++        app(RoleAssignmentService::class)->assign(
++            $membership,
++            $role,
++            new AuthorizationContext((int) $organization->id, (int) $assignedUnit->id),
++        );
++
++        $assignedEvent = $this->createUnitScopedReportEvent($organization, $user, $assignedUnit, 'Assigned Unit Detail Report Event');
++        $otherEvent = $this->createUnitScopedReportEvent($organization, $user, $otherUnit, 'Other Unit Detail Report Event');
++        $this->createUnitScopedReportRecords($organization, $user, $assignedEvent);
++        $this->createUnitScopedReportRecords($organization, $user, $otherEvent);
++
++        $baseUrl = 'http://'.$organization->slug.'.example.test/api/v1/events';
++        $visibleEventPaths = [
++            '/'.$assignedEvent->id.'/reports/registrations',
++            '/'.$assignedEvent->id.'/reports/attendance',
++            '/'.$assignedEvent->id.'/reports/passes',
++        ];
++        $hiddenEventPaths = [
++            '/'.$otherEvent->id.'/reports/registrations',
++            '/'.$otherEvent->id.'/reports/attendance',
++            '/'.$otherEvent->id.'/reports/passes',
++        ];
++
++        foreach ($visibleEventPaths as $path) {
++            $this->actingAs($user)->getJson($baseUrl.$path)->assertOk();
++        }
++
++        foreach ($hiddenEventPaths as $path) {
++            $this->actingAs($user)->getJson($baseUrl.$path)->assertNotFound();
++        }
++
++        $visibleExportPaths = [
++            '/'.$assignedEvent->id.'/reports/registrations/export',
++            '/'.$assignedEvent->id.'/reports/attendance/export',
++            '/'.$assignedEvent->id.'/reports/passes/export',
++        ];
++        $hiddenExportPaths = [
++            '/'.$otherEvent->id.'/reports/registrations/export',
++            '/'.$otherEvent->id.'/reports/attendance/export',
++            '/'.$otherEvent->id.'/reports/passes/export',
++        ];
++
++        foreach ($visibleExportPaths as $path) {
++            $this->actingAs($user)->get($baseUrl.$path)->assertOk();
++        }
++
++        foreach ($hiddenExportPaths as $path) {
++            $this->actingAs($user)->get($baseUrl.$path)->assertNotFound();
++        }
++    }
++
++    private function createUnitScopedReportRecords(Organization $organization, User $user, Event $event): void
++    {
++        $participant = EventParticipant::query()->create([
++            'organization_id' => $organization->id,
++            'event_id' => $event->id,
++            'participant_type' => 'guest',
++            'name' => 'Report Scope Guest',
++            'email' => 'report-scope-'.uniqid().'@example.test',
++            'status' => 'registered',
++            'invited_at' => now(),
++            'registered_at' => now(),
++        ]);
++
++        $pass = EventPass::query()->create([
++            'organization_id' => $organization->id,
++            'event_id' => $event->id,
++            'event_participant_id' => $participant->id,
++            'token_hash' => hash('sha256', bin2hex(random_bytes(32))),
++            'status' => 'active',
++            'capacity' => 1,
++            'current_inside' => 0,
++            'issued_at' => now(),
++            'issued_by' => $user->id,
++        ]);
++
++        EventAttendanceScan::query()->create([
++            'organization_id' => $organization->id,
++            'event_id' => $event->id,
++            'event_pass_id' => $pass->id,
++            'scanned_by' => $user->id,
++            'action' => 'entry',
++            'quantity' => 1,
++            'scanned_at' => now(),
++        ]);
++    }
++
+     private function createUnitScopedReportEvent(Organization $organization, User $user, \Modules\Core\Models\Unit $unit, string $title): Event
+     {
+         return Event::query()->create([

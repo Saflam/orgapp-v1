@@ -2,6 +2,8 @@
 
 namespace Modules\Events\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
+use Modules\Events\Console\Commands\ExpireEventPasses;
 use Modules\Core\Services\ModuleDependencyRegistry;
 use Modules\Core\Services\PermissionRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -13,6 +15,10 @@ class EventsServiceProvider extends ModuleServiceProvider
 {
     protected string $name = 'Events';
     protected string $nameLower = 'events';
+
+    protected array $commands = [
+        ExpireEventPasses::class,
+    ];
 
     protected array $providers = [
         RouteServiceProvider::class,
@@ -43,6 +49,12 @@ class EventsServiceProvider extends ModuleServiceProvider
         RateLimiter::for('events-public-pass-validation', function (Request $request): Limit {
             return Limit::perMinute(30)->by('events-public-pass-validation:'.$request->getHost().':'.$request->ip());
         });
+    }
+
+    /** Expire passes promptly after event end times. */
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->command('events:expire-passes')->everyMinute()->withoutOverlapping();
     }
 
     public function register(): void

@@ -27,7 +27,7 @@ return new class extends Migration {
             $table->text('description')->nullable();
 
             $table->string('source_type', 150)->nullable();
-            $table->unsignedBigInteger('source_id')->nullable();
+            $table->string('source_id')->nullable();
 
             $table->string('status', 16)->default('posted');
             $table->json('metadata')->nullable();

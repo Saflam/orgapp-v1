@@ -621,7 +621,7 @@ class FinanceFoundationTest extends TestCase
 
         $this->assertNotNull($receipt);
         $this->assertSame('member_payment', $receipt->source_type);
-        $this->assertSame($payment->id, $receipt->source_id);
+        $this->assertSame((string) $payment->id, (string) $receipt->source_id);
 
         $journal = FinanceJournal::query()
             ->where('source_type', 'member_payment')
