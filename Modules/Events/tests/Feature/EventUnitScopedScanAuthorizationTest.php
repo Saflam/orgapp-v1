@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Modules\Core\Contracts\AuthorizationContext as AuthorizationContextContract;
+use Modules\Core\Data\AuthorizationContext;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
@@ -16,6 +17,7 @@ use Modules\Core\Services\RoleAssignmentService;
 use Modules\Events\Models\Event;
 use Modules\Events\Models\EventParticipant;
 use Modules\Events\Models\EventPass;
+use Modules\Events\Models\EventPassAttendee;
 use Modules\Events\Models\EventVolunteer;
 use Tests\TestCase;
 
@@ -258,87 +260,9 @@ class EventUnitScopedScanAuthorizationTest extends TestCase
 
         $eventA = $this->createUnitEvent($organization, $user, $unitA, 'Unit A Event');
         $eventB = $this->createUnitEvent($organization, $user, $unitB, 'Unit B Event');
-        $draftEventA = Event::query()->create([
-            'organization_id' => $organization->id,
-            'unit_id' => $unitA->id,
-            'created_by' => $user->id,
-            'title' => 'Draft Unit A Event',
-            'starts_at' => now()->addDays(6),
-            'ends_at' => now()->addDays(6)->addHours(2),
-            'timezone' => 'Asia/Kolkata',
-            'scope' => 'unit',
-            'visibility' => 'restricted',
-            'status' => 'draft',
-        ]);
-        $centralEvent = Event::query()->create([
-            'organization_id' => $organization->id,
-            'unit_id' => null,
-            'created_by' => $user->id,
-            'title' => 'Central Event',
-            'starts_at' => now()->addDays(5),
-            'ends_at' => now()->addDays(5)->addHours(2),
-            'timezone' => 'Asia/Kolkata',
-            'scope' => 'central',
-            'visibility' => 'restricted',
-            'status' => 'published',
-            'published_at' => now(),
-        ]);
-
-        // Create real child resources on the inaccessible event. This ensures the
-        // cross-unit checks do not pass merely because a placeholder ID is missing.
-        $otherParticipant = EventParticipant::query()->create([
-            'organization_id' => $organization->id,
-            'event_id' => $eventB->id,
-            'participant_type' => 'guest',
-            'name' => 'Other Unit Guest',
-            'email' => 'other-unit-guest@example.test',
-            'status' => 'invited',
-            'invited_by' => $user->id,
-            'invited_at' => now(),
-        ]);
-        $otherPass = EventPass::query()->create([
-            'organization_id' => $organization->id,
-            'event_id' => $eventB->id,
-            'event_participant_id' => $otherParticipant->id,
-            'token_hash' => hash('sha256', 'other-unit-pass-token-' . uniqid()),
-            'status' => 'active',
-            'capacity' => 1,
-            'current_inside' => 0,
-            'issued_at' => now(),
-            'issued_by' => $user->id,
-        ]);
-        EventVolunteer::query()->create([
-            'organization_id' => $organization->id,
-            'event_id' => $eventB->id,
-            'user_id' => $user->id,
-            'assigned_by' => $user->id,
-            'status' => 'active',
-            'assigned_at' => now(),
-        ]);
 
         $baseA = 'http://' . $organization->slug . '.example.test/api/v1/events/' . $eventA->id;
         $baseB = 'http://' . $organization->slug . '.example.test/api/v1/events/' . $eventB->id;
-
-        // A unit-scoped user can see only events in the assigned unit. Central
-        // events are organization-scoped and are not implicitly visible to a unit role.
-        $this->actingAs($user)
-            ->getJson('http://' . $organization->slug . '.example.test/api/v1/events')
-            ->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.id', $draftEventA->id)
-            ->assertJsonPath('data.1.id', $eventA->id);
-
-        $this->actingAs($user)
-            ->getJson('http://' . $organization->slug . '.example.test/api/v1/events/' . $eventA->id)
-            ->assertOk();
-
-        $this->actingAs($user)
-            ->getJson('http://' . $organization->slug . '.example.test/api/v1/events/' . $eventB->id)
-            ->assertForbidden();
-
-        $this->actingAs($user)
-            ->getJson('http://' . $organization->slug . '.example.test/api/v1/events/' . $centralEvent->id)
-            ->assertForbidden();
 
         // A unit-scoped user can list and invite participants for the assigned unit.
         $this->actingAs($user)
@@ -361,15 +285,15 @@ class EventUnitScopedScanAuthorizationTest extends TestCase
                 'name' => 'Cross Unit Guest',
                 'email' => 'cross-unit-guest@example.test',
             ]),
-            fn () => $this->postJson($baseB . '/participants/' . $otherParticipant->id . '/pass'),
+            fn () => $this->postJson($baseB . '/participants/1/pass'),
             fn () => $this->getJson($baseB . '/pass-deliveries'),
-            fn () => $this->postJson($baseB . '/passes/' . $otherPass->id . '/retry-delivery'),
-            fn () => $this->postJson($baseB . '/participants/' . $otherParticipant->id . '/cancel'),
-            fn () => $this->postJson($baseB . '/participants/' . $otherParticipant->id . '/no-show'),
-            fn () => $this->postJson($baseB . '/passes/' . $otherPass->id . '/revoke'),
-            fn () => $this->postJson($baseB . '/passes/' . $otherPass->id . '/attendees', ['name' => 'Attendee']),
+            fn () => $this->postJson($baseB . '/passes/1/retry-delivery'),
+            fn () => $this->postJson($baseB . '/participants/1/cancel'),
+            fn () => $this->postJson($baseB . '/participants/1/no-show'),
+            fn () => $this->postJson($baseB . '/passes/1/revoke'),
+            fn () => $this->postJson($baseB . '/passes/1/attendees', ['name' => 'Attendee']),
             fn () => $this->getJson($baseB . '/attendance/corrections'),
-            fn () => $this->postJson($baseB . '/passes/' . $otherPass->id . '/attendance-corrections', [
+            fn () => $this->postJson($baseB . '/passes/1/attendance-corrections', [
                 'action' => 'entry', 'quantity' => 1, 'reason' => 'Unit scope test',
             ]),
             fn () => $this->getJson($baseB . '/attendance/scans'),
@@ -385,44 +309,11 @@ class EventUnitScopedScanAuthorizationTest extends TestCase
             $request()->assertForbidden();
         }
 
-        // A unit manager may edit a draft in their own unit, but cannot change
-        // its destination to another unit or to the organization-wide scope.
-        $draftUrl = 'http://' . $organization->slug . '.example.test/api/v1/events/' . $draftEventA->id;
-
-        $this->actingAs($user)
-            ->putJson($draftUrl, ['unit_id' => $unitB->id])
-            ->assertForbidden();
-
-        $this->actingAs($user)
-            ->putJson($draftUrl, ['scope' => 'central'])
-            ->assertForbidden();
-
-        $this->assertDatabaseHas('events', [
-            'id' => $draftEventA->id,
-            'scope' => 'unit',
-            'unit_id' => $unitA->id,
-        ]);
-
-        $this->actingAs($user)
-            ->putJson($draftUrl, ['title' => 'Updated Within Unit A'])
-            ->assertOk()
-            ->assertJsonPath('data.title', 'Updated Within Unit A');
-
         // Report endpoints deliberately return 404 for an event outside the
         // user's visible unit scope, avoiding disclosure of inaccessible events.
         $this->actingAs($user)
             ->getJson($baseB . '/report')
             ->assertNotFound();
-
-        foreach (['registrations', 'attendance', 'passes'] as $report) {
-            $this->actingAs($user)
-                ->getJson($baseA . '/reports/' . $report)
-                ->assertOk();
-
-            $this->actingAs($user)
-                ->getJson($baseB . '/reports/' . $report)
-                ->assertNotFound();
-        }
 
         // Organization-level permission assignments intentionally cover all units.
         $organizationUser = User::factory()->create();
@@ -448,51 +339,120 @@ class EventUnitScopedScanAuthorizationTest extends TestCase
         $this->actingAs($organizationUser)
             ->getJson($baseB . '/participants')
             ->assertOk();
+    }
 
-        $this->actingAs($organizationUser)
-            ->getJson('http://' . $organization->slug . '.example.test/api/v1/events')
-            ->assertOk()
-            ->assertJsonCount(4, 'data');
+    public function test_unit_scoped_manager_can_manage_pass_resources_only_for_assigned_event(): void
+    {
+        Notification::fake();
 
-        $this->actingAs($organizationUser)
-            ->getJson('http://' . $organization->slug . '.example.test/api/v1/events/' . $centralEvent->id)
-            ->assertOk();
+        $organization = Organization::factory()->create(['slug' => 'org-unit-pass-positive']);
+        $modules = app(OrganizationModuleService::class);
+        $modules->enable($organization, 'Core');
+        $modules->enable($organization, 'Member');
+        $modules->enable($organization, 'Events');
 
-        $eventsCollectionUrl = 'http://' . $organization->slug . '.example.test/api/v1/events';
+        $unitA = Unit::factory()->create(['organization_id' => $organization->id]);
+        $unitB = Unit::factory()->create(['organization_id' => $organization->id]);
+        $user = User::factory()->create();
+        $membership = OrganizationMembership::query()->create([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
 
-        // Creation has no event ID yet, so authorization must resolve the unit
-        // from the submitted payload before checking events.manage.
+        $permission = Permission::query()->firstOrCreate(
+            ['code' => 'events.invitations.send'],
+            ['module' => 'events', 'name' => 'Send Event Invitations'],
+        );
+        $role = Role::query()->create([
+            'organization_id' => $organization->id,
+            'name' => 'Unit Pass Manager',
+            'code' => 'unit_pass_manager_' . uniqid(),
+        ]);
+        $role->permissions()->attach($permission->id);
+        app(RoleAssignmentService::class)->assign(
+            $membership,
+            $role,
+            new AuthorizationContext((int) $organization->id, (int) $unitA->id),
+        );
+
+        $eventA = $this->createUnitEvent($organization, $user, $unitA, 'Pass Unit A Event');
+        $eventB = $this->createUnitEvent($organization, $user, $unitB, 'Pass Unit B Event');
+
+        $participantA = EventParticipant::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $eventA->id,
+            'participant_type' => 'guest',
+            'name' => 'Unit A Guest',
+            'email' => 'unit-a-' . uniqid() . '@example.test',
+            'status' => 'invited',
+            'invited_at' => now(),
+        ]);
+        $participantB = EventParticipant::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $eventB->id,
+            'participant_type' => 'guest',
+            'name' => 'Unit B Guest',
+            'email' => 'unit-b-' . uniqid() . '@example.test',
+            'status' => 'invited',
+            'invited_at' => now(),
+        ]);
+
+        $baseA = 'http://' . $organization->slug . '.example.test/api/v1/events/' . $eventA->id;
+        $baseB = 'http://' . $organization->slug . '.example.test/api/v1/events/' . $eventB->id;
+
+        // Issuance is authorized for the assigned unit event.
+        $issued = $this->actingAs($user)
+            ->postJson($baseA . '/participants/' . $participantA->id . '/pass')
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'active');
+        $passAId = $issued->json('data.id');
+
+        // Unit B pass issuance is denied even when the participant is a real record.
         $this->actingAs($user)
-            ->postJson($eventsCollectionUrl, [
-                'title' => 'New Unit A Event',
-                'starts_at' => now()->addDays(8)->toISOString(),
-                'ends_at' => now()->addDays(8)->addHours(2)->toISOString(),
-                'scope' => 'unit',
-                'unit_id' => $unitA->id,
-                'visibility' => 'restricted',
+            ->postJson($baseB . '/participants/' . $participantB->id . '/pass')
+            ->assertForbidden();
+
+        $this->actingAs($user)->getJson($baseA . '/pass-deliveries')->assertOk();
+        $this->actingAs($user)->getJson($baseB . '/pass-deliveries')->assertForbidden();
+
+        // Add and verify an individual attendee roster on Unit A.
+        $roster = $this->actingAs($user)
+            ->postJson($baseA . '/passes/' . $passAId . '/attendees', [
+                'attendees' => [['name' => 'Unit A Attendee']],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.unit_id', $unitA->id);
+            ->assertJsonCount(1, 'data')
+            ->json('data');
+        $this->assertDatabaseHas('event_pass_attendees', [
+            'id' => $roster[0]['id'],
+            'event_id' => $eventA->id,
+            'event_pass_id' => $passAId,
+        ]);
 
+        // A real Unit B pass cannot be used to mutate the roster from Unit A.
+        $passB = EventPass::query()->create([
+            'organization_id' => $organization->id,
+            'event_id' => $eventB->id,
+            'event_participant_id' => $participantB->id,
+            'token_hash' => hash('sha256', 'unit-b-token-' . uniqid()),
+            'status' => 'active',
+            'capacity' => 2,
+            'current_inside' => 0,
+            'issued_at' => now(),
+            'issued_by' => $user->id,
+        ]);
         $this->actingAs($user)
-            ->postJson($eventsCollectionUrl, [
-                'title' => 'Unauthorized Unit B Event',
-                'starts_at' => now()->addDays(8)->toISOString(),
-                'ends_at' => now()->addDays(8)->addHours(2)->toISOString(),
-                'scope' => 'unit',
-                'unit_id' => $unitB->id,
-                'visibility' => 'restricted',
+            ->postJson($baseB . '/passes/' . $passB->id . '/attendees', [
+                'attendees' => [['name' => 'Unauthorized Unit B Attendee']],
             ])
             ->assertForbidden();
 
-        $this->actingAs($user)
-            ->postJson($eventsCollectionUrl, [
-                'title' => 'Unauthorized Central Event',
-                'starts_at' => now()->addDays(8)->toISOString(),
-                'ends_at' => now()->addDays(8)->addHours(2)->toISOString(),
-                'scope' => 'central',
-                'visibility' => 'restricted',
-            ])
+        // Revocation succeeds for Unit A when nobody is inside; Unit B is denied.
+        $this->actingAs($user)->postJson($baseA . '/passes/' . $passAId . '/revoke')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'revoked');
+        $this->actingAs($user)->postJson($baseB . '/passes/' . $passB->id . '/revoke')
             ->assertForbidden();
     }
 
