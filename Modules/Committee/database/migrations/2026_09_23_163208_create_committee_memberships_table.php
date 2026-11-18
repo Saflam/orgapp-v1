@@ -27,6 +27,7 @@ return new class extends Migration
             $table->date('end_date')->nullable();
 
             $table->string('status')->default('active');
+            $table->text('end_reason')->nullable();
 
             $table->timestamps();
 

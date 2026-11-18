@@ -1,0 +1,17 @@
+{
+    "name": "saflivo/data-migration",
+    "description": "System-level legacy data migration tools.",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "Modules\\DataMigration\\": "app/",
+            "Modules\\DataMigration\\Database\\Factories\\": "database/factories/",
+            "Modules\\DataMigration\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\DataMigration\\Tests\\": "tests/"
+        }
+    }
+}

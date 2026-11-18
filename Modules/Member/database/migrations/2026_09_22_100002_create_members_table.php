@@ -17,7 +17,7 @@ return new class extends Migration
 
             $table->foreignId('unit_id')->nullable();
 
-            $table->string('membership_number');
+            $table->string('membership_number')->nullable();
 
             $table->date('joined_at')->nullable();
 
@@ -48,9 +48,9 @@ return new class extends Migration
                 'members_org_user_unique'
             );
 
-            $table->unique(
+            $table->index(
                 ['organization_id', 'membership_number'],
-                'members_org_number_unique'
+                'members_org_membership_number_idx'
             );
         });
     }

@@ -8,13 +8,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('events', function (Blueprint $table): void {
-            $table->timestamp('registration_opens_at')->nullable()->after('registration_fields');
-            $table->timestamp('registration_closes_at')->nullable()->after('registration_opens_at');
-            $table->unsignedInteger('registration_capacity')->nullable()->after('registration_closes_at');
-            $table->unsignedInteger('venue_capacity')->nullable()->after('registration_capacity');
-        });
-
         Schema::create('event_attendance_corrections', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('organization_id')->constrained('organizations')->cascadeOnDelete();
@@ -36,8 +29,5 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('event_attendance_corrections');
-        Schema::table('events', function (Blueprint $table): void {
-            $table->dropColumn(['registration_opens_at', 'registration_closes_at', 'registration_capacity', 'venue_capacity']);
-        });
     }
 };

@@ -15,37 +15,10 @@ return new class extends Migration
             $table->longText('credentials')->nullable();
             $table->timestamps();
         });
-
-        Schema::table('organization_notification_channels', function (Blueprint $table): void {
-            $table->boolean('use_system_default')
-                ->default(false)
-                ->after('is_enabled');
-            $table->longText('credentials')->nullable()->after('use_system_default');
-            $table->dropColumn('configuration');
-        });
-
-        Schema::table('notification_deliveries', function (Blueprint $table): void {
-            $table->string('channel_source', 20)
-                ->default('organization')
-                ->after('channel');
-            $table->index(
-                ['channel', 'channel_source', 'status'],
-                'notification_deliveries_channel_source_idx'
-            );
-        });
     }
 
     public function down(): void
     {
-        Schema::table('notification_deliveries', function (Blueprint $table): void {
-            $table->dropIndex('notification_deliveries_channel_source_idx');
-            $table->dropColumn('channel_source');
-        });
-
-        Schema::table('organization_notification_channels', function (Blueprint $table): void {
-            $table->dropColumn('use_system_default');
-        });
-
         Schema::dropIfExists('system_notification_channels');
     }
 };

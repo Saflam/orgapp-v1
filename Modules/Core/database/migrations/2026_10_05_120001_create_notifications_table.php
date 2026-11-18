@@ -31,6 +31,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('notification_id');
             $table->string('channel', 50);
+            $table->string('channel_source', 20)->default('organization');
             $table->string('status', 30)->default('queued');
             $table->unsignedInteger('attempts')->default(0);
             $table->string('provider_message_id')->nullable();
@@ -41,6 +42,7 @@ return new class extends Migration
 
             $table->index(['notification_id', 'channel'], 'notification_deliveries_lookup_idx');
             $table->index(['status', 'queued_at'], 'notification_deliveries_status_idx');
+            $table->index(['channel', 'channel_source', 'status'], 'notification_deliveries_channel_source_idx');
             $table->foreign('notification_id', 'notification_deliveries_notification_fk')
                 ->references('id')->on('notifications')->cascadeOnDelete();
         });

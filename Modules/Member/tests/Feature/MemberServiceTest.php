@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Organization;
 use Modules\Core\Models\Unit;
 use Modules\Member\Models\Member;
+use Modules\Member\Models\MemberRelationship;
 use Modules\Member\Services\MemberService;
 use Tests\TestCase;
 
@@ -243,7 +244,7 @@ class MemberServiceTest extends TestCase
         ]);
     }
 
-    public function test_membership_number_must_be_unique_within_an_organization(): void
+    public function test_unrelated_families_cannot_reuse_a_membership_number_within_an_organization(): void
     {
         $organization = Organization::factory()->create();
 
@@ -507,4 +508,88 @@ class MemberServiceTest extends TestCase
             $member->user->details->company
         );
     }
+
+    public function test_a_spouse_can_share_the_existing_family_membership_number(): void
+    {
+        $organization = Organization::factory()->create();
+        $firstUser = User::factory()->create();
+        $spouseUser = User::factory()->create();
+
+        foreach ([$firstUser, $spouseUser] as $user) {
+            OrganizationMembership::create([
+                'organization_id' => $organization->id,
+                'user_id' => $user->id,
+                'status' => 'active',
+            ]);
+        }
+
+        $service = app(MemberService::class);
+        $primaryMember = $service->create([
+            'organization_id' => $organization->id,
+            'user_id' => $firstUser->id,
+            'membership_number' => 'SAA-0001',
+            'joined_at' => '2026-01-01',
+            'metadata' => [],
+        ]);
+
+        $spouseMember = $service->create([
+            'organization_id' => $organization->id,
+            'user_id' => $spouseUser->id,
+            'membership_number' => 'SAA-0001',
+            'shared_membership_with_member_id' => $primaryMember->id,
+            'joined_at' => '2026-01-01',
+            'metadata' => [],
+        ]);
+
+        $this->assertSame('SAA-0001', $primaryMember->fresh()->membership_number);
+        $this->assertSame('SAA-0001', $spouseMember->fresh()->membership_number);
+        $this->assertDatabaseCount('members', 2);
+    }
+
+    public function test_changing_a_membership_number_updates_the_active_spouse_record(): void
+    {
+        $organization = Organization::factory()->create();
+        $firstUser = User::factory()->create();
+        $spouseUser = User::factory()->create();
+
+        foreach ([$firstUser, $spouseUser] as $user) {
+            OrganizationMembership::create([
+                'organization_id' => $organization->id,
+                'user_id' => $user->id,
+                'status' => 'active',
+            ]);
+        }
+
+        $service = app(MemberService::class);
+        $primaryMember = $service->create([
+            'organization_id' => $organization->id,
+            'user_id' => $firstUser->id,
+            'membership_number' => 'SAA-0001',
+            'joined_at' => '2026-01-01',
+            'metadata' => [],
+        ]);
+        $spouseMember = $service->create([
+            'organization_id' => $organization->id,
+            'user_id' => $spouseUser->id,
+            'membership_number' => 'SAA-0001',
+            'shared_membership_with_member_id' => $primaryMember->id,
+            'joined_at' => '2026-01-01',
+            'metadata' => [],
+        ]);
+
+        MemberRelationship::create([
+            'member_id' => $primaryMember->id,
+            'related_member_id' => $spouseMember->id,
+            'relationship_type' => 'spouse',
+            'started_at' => '2026-01-01',
+        ]);
+
+        $service->update($primaryMember, [
+            'membership_number' => 'SAA-0042',
+        ]);
+
+        $this->assertSame('SAA-0042', $primaryMember->fresh()->membership_number);
+        $this->assertSame('SAA-0042', $spouseMember->fresh()->membership_number);
+    }
+
 }

@@ -12,8 +12,12 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('organization_id');
             $table->string('channel', 50);
+            $table->boolean('is_allowed')->default(false);
+            $table->boolean('utility_allowed')->default(false);
+            $table->boolean('marketing_allowed')->default(false);
             $table->boolean('is_enabled')->default(false);
-            $table->json('configuration')->nullable();
+            $table->boolean('use_system_default')->default(false);
+            $table->longText('credentials')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'channel'], 'onc_org_channel_unique');

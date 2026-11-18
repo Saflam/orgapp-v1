@@ -1,0 +1,15 @@
+{
+    "name": "DataMigration",
+    "alias": "data-migration",
+    "description": "System-level legacy data migration tools.",
+    "keywords": [
+        "Saflivo",
+        "data migration",
+        "legacy import"
+    ],
+    "priority": 5,
+    "providers": [
+        "Modules\\DataMigration\\Providers\\DataMigrationServiceProvider"
+    ],
+    "files": []
+}

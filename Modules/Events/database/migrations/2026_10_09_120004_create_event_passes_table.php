@@ -17,9 +17,13 @@ return new class extends Migration
             $table->char('token_hash', 64)->unique();
             $table->string('status', 20)->default('active');
             $table->unsignedSmallInteger('capacity')->default(1);
+            $table->unsignedSmallInteger('current_inside')->default(0);
             $table->timestamp('issued_at');
             $table->foreignId('issued_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('revoked_at')->nullable();
+            $table->string('notification_delivery_status', 20)->default('not_requested');
+            $table->timestamp('notification_sent_at')->nullable();
+            $table->timestamp('notification_failed_at')->nullable();
             $table->timestamps();
 
             $table->foreign(['organization_id', 'event_id'], 'event_passes_org_event_fk')

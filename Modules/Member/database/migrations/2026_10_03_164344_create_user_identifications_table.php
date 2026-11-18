@@ -20,6 +20,7 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->string('identification_number');
+            $table->date('expires_at')->nullable();
 
             $table->json('metadata')->nullable();
 
@@ -34,6 +35,7 @@ return new class extends Migration
                 ['user_id'],
                 'user_identifications_user_idx'
             );
+            $table->index(['identification_type_id', 'expires_at'], 'user_identifications_type_expiry_idx');
         });
     }
 

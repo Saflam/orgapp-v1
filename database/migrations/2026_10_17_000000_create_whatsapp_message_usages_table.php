@@ -22,6 +22,7 @@ return new class extends Migration
             $table->string('channel_source', 20);
             $table->string('provider_message_id')->nullable()->index();
             $table->string('status', 20)->default('accepted');
+            $table->string('delivery_status', 20)->nullable()->index();
             $table->string('meta_pricing_category', 30)->nullable();
             $table->boolean('meta_billable')->nullable();
             $table->decimal('meta_cost_amount', 12, 6)->nullable();

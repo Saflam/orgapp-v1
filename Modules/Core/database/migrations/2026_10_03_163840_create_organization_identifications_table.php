@@ -28,6 +28,10 @@ return new class extends Migration
             $table->boolean('requires_document')
                 ->default(false);
 
+            $table->boolean('has_expiry')->default(false);
+            $table->json('expiry_reminder_days')->nullable();
+            $table->json('document_requirements')->nullable();
+
             $table->timestamps();
 
             $table->unique(

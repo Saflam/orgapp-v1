@@ -17,7 +17,10 @@ return new class extends Migration
 
             $table->string('name');
             $table->string('code');
+            $table->string('scope', 30)->default('central');
             $table->text('description')->nullable();
+            $table->unsignedInteger('sort_order')->default(100);
+            $table->boolean('is_key_position')->default(false);
             $table->boolean('is_active')->default(true);
 
             $table->timestamps();
@@ -26,6 +29,8 @@ return new class extends Migration
                 'organization_id',
                 'code',
             ]);
+            $table->index(['organization_id', 'scope'], 'designations_org_scope_idx');
+            $table->index(['organization_id', 'scope', 'sort_order'], 'designations_org_scope_order_idx');
         });
     }
 

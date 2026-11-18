@@ -8,10 +8,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('event_passes', function (Blueprint $table): void {
-            $table->unsignedSmallInteger('current_inside')->default(0)->after('capacity');
-        });
-
         Schema::create('event_attendance_scans', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('organization_id')->constrained('organizations')->cascadeOnDelete();
@@ -32,8 +28,5 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('event_attendance_scans');
-        Schema::table('event_passes', function (Blueprint $table): void {
-            $table->dropColumn('current_inside');
-        });
     }
 };

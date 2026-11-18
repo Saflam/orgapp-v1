@@ -20,6 +20,8 @@ return new class extends Migration {
             $table->string('source_type')->nullable();
             $table->unsignedBigInteger('source_id')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_cash_account')->default(false);
+            $table->string('cash_flow_category', 16)->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();
 

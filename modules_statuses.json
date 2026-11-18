@@ -4,5 +4,6 @@
     "Finance": true,
     "Committee": true,
     "Saradhi": true,
-    "Events": true
+    "Events": true,
+    "DataMigration": true
 }

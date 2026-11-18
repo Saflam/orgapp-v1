@@ -542,13 +542,12 @@ class MembershipApplicationController
 
     public function membershipNumberSuggestion(
         MembershipApplication $membershipApplication,
-        \Modules\Member\Services\MembershipNumberService $membershipNumberService,
+        \Modules\Member\Services\MembershipApplicationWorkflowService $workflowService,
     ): JsonResponse {
         $this->ensureApplicationBelongsToCurrentOrganization($membershipApplication);
-        $organization = \Modules\Core\Models\Organization::query()->findOrFail($membershipApplication->organization_id);
 
         return response()->json([
-            'membership_number' => $membershipNumberService->suggest($organization),
+            'membership_number' => $workflowService->suggestMembershipNumber($membershipApplication),
         ]);
     }
 

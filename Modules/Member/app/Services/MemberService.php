@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Core\Models\Unit;
 use Modules\Member\Models\Member;
+use Modules\Member\Models\MemberRelationship;
 
 class MemberService
 {
@@ -30,7 +31,10 @@ class MemberService
 
             $this->ensureMembershipNumberIsAvailable(
                 $organizationId,
-                $data['membership_number']
+                $data['membership_number'],
+                sharedMemberId: isset($data['shared_membership_with_member_id'])
+                    ? (int) $data['shared_membership_with_member_id']
+                    : null,
             );
 
             $this->ensureUserIsNotAlreadyMember(
@@ -102,14 +106,19 @@ class MemberService
                 );
             }
 
+            $spouseMemberIds = [];
+
             if (
                 array_key_exists('membership_number', $data)
                 && $data['membership_number'] !== $member->membership_number
             ) {
+                $spouseMemberIds = $this->activeSpouseMemberIds($member);
+
                 $this->ensureMembershipNumberIsAvailable(
                     $organizationId,
                     $data['membership_number'],
-                    $member->id
+                    ignoreMemberId: $member->id,
+                    allowedMemberIds: $spouseMemberIds,
                 );
             }
 
@@ -158,6 +167,15 @@ class MemberService
 
             if ($memberData !== []) {
                 $member->update($memberData);
+
+                // A membership number identifies the family membership. Keep
+                // the active spouse record(s) on the same number when it changes.
+                if (array_key_exists('membership_number', $memberData) && $spouseMemberIds !== []) {
+                    Member::query()
+                        ->where('organization_id', $organizationId)
+                        ->whereIn('id', $spouseMemberIds)
+                        ->update(['membership_number' => $memberData['membership_number']]);
+                }
             }
 
             $userDetailData = array_intersect_key(
@@ -267,11 +285,45 @@ class MemberService
         }
     }
 
+    /**
+     * A membership number is unique per family, not per individual member.
+     * A second record may reuse it only when it is being added to an already
+     * identified spouse family. Unrelated families remain unique.
+     *
+     * @param array<int, int> $allowedMemberIds
+     */
     private function ensureMembershipNumberIsAvailable(
         int $organizationId,
         string $membershipNumber,
         ?int $ignoreMemberId = null,
+        ?int $sharedMemberId = null,
+        array $allowedMemberIds = [],
     ): void {
+        if ($sharedMemberId !== null) {
+            $sharedMember = Member::query()
+                ->where('organization_id', $organizationId)
+                ->whereKey($sharedMemberId)
+                ->where('membership_number', $membershipNumber)
+                ->first();
+
+            if ($sharedMember === null) {
+                throw ValidationException::withMessages([
+                    'membership_number' => 'The selected spouse does not have this membership number in the organization.',
+                ]);
+            }
+
+            $allowedMemberIds = array_merge(
+                $allowedMemberIds,
+                [$sharedMemberId],
+                $this->activeSpouseMemberIds($sharedMember),
+            );
+        }
+
+        $allowedMemberIds = array_values(array_unique(array_filter(
+            array_map('intval', $allowedMemberIds),
+            static fn (int $id): bool => $id > 0,
+        )));
+
         $query = Member::query()
             ->where('organization_id', $organizationId)
             ->where('membership_number', $membershipNumber);
@@ -280,11 +332,52 @@ class MemberService
             $query->whereKeyNot($ignoreMemberId);
         }
 
+        if ($allowedMemberIds !== []) {
+            $query->whereNotIn('id', $allowedMemberIds);
+        }
+
         if ($query->exists()) {
             throw ValidationException::withMessages([
-                'membership_number' => 'The membership number has already been used in this organization.',
+                'membership_number' => 'This membership number is already assigned to another family.',
             ]);
         }
+    }
+
+    /**
+     * Return active spouse member IDs connected to the supplied member.
+     *
+     * @return array<int, int>
+     */
+    private function activeSpouseMemberIds(Member|int $member): array
+    {
+        $memberId = $member instanceof Member ? (int) $member->id : $member;
+        $organizationId = $member instanceof Member ? (int) $member->organization_id : null;
+
+        $relationships = MemberRelationship::query()
+            ->whereNull('ended_at')
+            ->whereIn('relationship_type', ['spouse', 'spouse_of'])
+            ->where(function ($query) use ($memberId): void {
+                $query->where('member_id', $memberId)
+                    ->orWhere('related_member_id', $memberId);
+            })
+            ->get(['member_id', 'related_member_id']);
+
+        $ids = $relationships->map(static function (MemberRelationship $relationship) use ($memberId): int {
+            return (int) ($relationship->member_id === $memberId
+                ? $relationship->related_member_id
+                : $relationship->member_id);
+        })->unique()->values()->all();
+
+        if ($organizationId !== null && $ids !== []) {
+            return Member::query()
+                ->where('organization_id', $organizationId)
+                ->whereIn('id', $ids)
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+        }
+
+        return $ids;
     }
 
     private function ensureUserIsNotAlreadyMember(

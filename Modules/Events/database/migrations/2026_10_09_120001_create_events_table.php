@@ -24,6 +24,11 @@ return new class extends Migration
             $table->string('timezone', 64)->default('Asia/Kolkata');
             $table->string('scope', 20)->default('central');
             $table->string('visibility', 20)->default('restricted');
+            $table->json('registration_fields')->nullable();
+            $table->timestamp('registration_opens_at')->nullable();
+            $table->timestamp('registration_closes_at')->nullable();
+            $table->unsignedInteger('registration_capacity')->nullable();
+            $table->unsignedInteger('venue_capacity')->nullable();
             $table->string('status', 20)->default('draft');
             $table->string('cover_image_path')->nullable();
             $table->string('thumbnail_image_path')->nullable();

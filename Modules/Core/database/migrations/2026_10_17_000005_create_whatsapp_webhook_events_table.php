@@ -8,12 +8,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasColumn('whatsapp_message_usages', 'delivery_status')) {
-            Schema::table('whatsapp_message_usages', function (Blueprint $table): void {
-                $table->string('delivery_status', 20)->nullable()->index();
-            });
-        }
-
         if (Schema::hasTable('whatsapp_webhook_events')) {
             return;
         }
@@ -37,10 +31,5 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('whatsapp_webhook_events');
-        if (Schema::hasColumn('whatsapp_message_usages', 'delivery_status')) {
-            Schema::table('whatsapp_message_usages', function (Blueprint $table): void {
-                $table->dropColumn('delivery_status');
-            });
-        }
     }
 };

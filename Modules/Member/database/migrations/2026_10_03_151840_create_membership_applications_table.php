@@ -22,8 +22,14 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->foreignId('membership_type_id')
+                ->nullable()
                 ->constrained('membership_types')
                 ->restrictOnDelete();
+
+            $table->foreignId('member_id')
+                ->nullable()
+                ->constrained('members')
+                ->nullOnDelete();
 
             $table->string('status')->default('draft');
 
@@ -35,6 +41,8 @@ return new class extends Migration
 
             $table->timestamp('submitted_at')->nullable();
             $table->timestamps();
+
+            $table->unique('member_id', 'membership_applications_member_unique');
         });
     }
 

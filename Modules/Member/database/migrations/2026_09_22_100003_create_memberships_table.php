@@ -23,6 +23,8 @@ return new class extends Migration
 
             $table->string('status', 30)->default('in_review');
 
+            $table->text('status_reason')->nullable();
+
             $table->json('metadata')->nullable();
 
             $table->timestamps();

@@ -18,6 +18,7 @@ return new class extends Migration
                 $table->unsignedInteger('unmatched_count')->default(0);
                 $table->unsignedInteger('duplicate_count')->default(0);
                 $table->unsignedInteger('invalid_count')->default(0);
+                $table->unsignedInteger('discrepancy_count')->default(0);
                 $table->timestamp('imported_at')->nullable();
                 $table->timestamps();
                 $table->foreign('imported_by', 'wa_cost_batch_importer_fk')->references('id')->on('users')->nullOnDelete();
@@ -39,6 +40,11 @@ return new class extends Migration
                 $table->timestamp('provider_occurred_at')->nullable();
                 $table->string('reconciliation_status', 20);
                 $table->string('issue', 255)->nullable();
+                $table->decimal('internal_cost_amount', 12, 6)->nullable();
+                $table->char('internal_cost_currency', 3)->nullable();
+                $table->string('internal_pricing_category', 40)->nullable();
+                $table->boolean('internal_billable')->nullable();
+                $table->json('discrepancy_details')->nullable();
                 $table->json('source_row')->nullable();
                 $table->timestamps();
                 $table->foreign('batch_id', 'wa_cost_item_batch_fk')->references('id')->on('whatsapp_cost_reconciliation_batches')->cascadeOnDelete();

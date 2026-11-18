@@ -28,6 +28,24 @@ class MembershipApplicationWorkflowService
     ) {
     }
 
+    /**
+     * Return the existing family number for a linked spouse application;
+     * otherwise return the next number from the organization's sequence.
+     */
+    public function suggestMembershipNumber(MembershipApplication $application): string
+    {
+        $spouse = $this->resolveLinkedSpouseMember($application);
+
+        if ($spouse !== null) {
+            return (string) $spouse->membership_number;
+        }
+
+        $organization = \Modules\Core\Models\Organization::query()
+            ->findOrFail($application->organization_id);
+
+        return $this->membershipNumberService->suggest($organization);
+    }
+
     public function transition(
         MembershipApplication $application,
         MembershipApplicationStatus $to,
@@ -180,13 +198,35 @@ class MembershipApplicationWorkflowService
             $this->paymentObligationService->ensureApplicationFullyPaid($application);
 
             $organization = \Modules\Core\Models\Organization::query()->findOrFail($application->organization_id);
-            $membershipNumber = trim((string) $membershipNumber);
-            if ($membershipNumber === '') {
+            $data = $application->data ?? [];
+            $memberData = $data['member'] ?? [];
+            $sharedSpouse = $this->resolveLinkedSpouseMember($application);
+            $requestedMembershipNumber = trim((string) $membershipNumber);
+
+            if ($sharedSpouse !== null) {
+                // Spouses retain the existing family's membership number.
+                // A conflicting manually entered number must not split the family.
+                $sharedNumber = (string) $sharedSpouse->membership_number;
+                if ($requestedMembershipNumber !== '') {
+                    $normalizedRequestedNumber = $this->membershipNumberService->normalizeManualNumber(
+                        $organization,
+                        $requestedMembershipNumber,
+                    );
+
+                    if ($normalizedRequestedNumber !== $sharedNumber) {
+                        throw ValidationException::withMessages([
+                            'membership_number' => 'A spouse must use the existing family membership number: '.$sharedNumber.'.',
+                        ]);
+                    }
+                }
+
+                $membershipNumber = $sharedNumber;
+            } elseif ($requestedMembershipNumber === '') {
                 $membershipNumber = $this->membershipNumberService->allocate($organization);
             } else {
                 $membershipNumber = $this->membershipNumberService->normalizeManualNumber(
                     $organization,
-                    $membershipNumber,
+                    $requestedMembershipNumber,
                 );
 
                 if (Member::query()
@@ -194,15 +234,12 @@ class MembershipApplicationWorkflowService
                     ->where('membership_number', $membershipNumber)
                     ->exists()) {
                     throw ValidationException::withMessages([
-                        'membership_number' => 'This membership ID is already assigned within the organization.',
+                        'membership_number' => 'This membership ID is already assigned to another family.',
                     ]);
                 }
 
                 $this->membershipNumberService->observeManualNumber($organization, $membershipNumber);
             }
-
-            $data = $application->data ?? [];
-            $memberData = $data['member'] ?? [];
 
             $organizationMembership = \App\Models\OrganizationMembership::query()
                 ->where('organization_id', $application->organization_id)
@@ -262,6 +299,7 @@ class MembershipApplicationWorkflowService
                     'organization_id' => $application->organization_id,
                     'user_id' => $application->user_id,
                     'membership_number' => $membershipNumber,
+                    'shared_membership_with_member_id' => $sharedSpouse?->id,
                     'first_name' => $memberData['first_name'] ?? null,
                     'middle_name' => $memberData['middle_name'] ?? null,
                     'last_name' => $memberData['last_name'] ?? null,
@@ -409,6 +447,85 @@ class MembershipApplicationWorkflowService
             );
     }
 
+    /**
+     * Resolve an already-confirmed spouse linked to this application.
+     *
+     * This mirrors the accepted-request and cross-application references used
+     * by linkSpouseRelationships(), allowing the family number to be selected
+     * before the new member record is created.
+     */
+    private function resolveLinkedSpouseMember(MembershipApplication $application): ?Member
+    {
+        $data = $application->data ?? [];
+        $candidateIds = [];
+
+        $selectedMemberId = data_get($data, 'spouse.member_id');
+        if ($selectedMemberId !== null) {
+            $acceptedRequest = \Modules\Member\Models\SpouseRelationshipRequest::query()
+                ->where('organization_id', $application->organization_id)
+                ->where('requester_application_id', $application->id)
+                ->where('target_member_id', (int) $selectedMemberId)
+                ->where('status', 'accepted')
+                ->exists();
+
+            if ($acceptedRequest) {
+                $candidateIds[] = (int) $selectedMemberId;
+            }
+        }
+
+        $invitedSpouseMemberId = data_get($data, 'member.metadata.spouse_of_member_id');
+        if ($invitedSpouseMemberId !== null) {
+            $acceptedInvitationRequest = \Modules\Member\Models\SpouseRelationshipRequest::query()
+                ->where('organization_id', $application->organization_id)
+                ->where('requester_application_id', $application->id)
+                ->where('target_member_id', (int) $invitedSpouseMemberId)
+                ->where('status', 'accepted')
+                ->exists();
+
+            if ($acceptedInvitationRequest) {
+                $candidateIds[] = (int) $invitedSpouseMemberId;
+            }
+        }
+
+        $sourceApplicationId = data_get($data, 'member.metadata.spouse_of_application_id');
+        if ($sourceApplicationId !== null) {
+            $sourceApplication = MembershipApplication::query()
+                ->whereKey((int) $sourceApplicationId)
+                ->where('organization_id', $application->organization_id)
+                ->first(['id', 'member_id']);
+
+            if ($sourceApplication?->member_id !== null) {
+                $candidateIds[] = (int) $sourceApplication->member_id;
+            }
+        }
+
+        // The spouse may have been confirmed first while the original
+        // applicant's application was still awaiting confirmation.
+        // The application payload is intentionally cleared after confirmation.
+        // The spouse-of-application reference is also copied into member metadata,
+        // which remains available for the reverse confirmation order.
+        $confirmedSpouseMembers = Member::query()
+            ->where('organization_id', $application->organization_id)
+            ->where('metadata->spouse_of_application_id', $application->id)
+            ->get(['id']);
+
+        foreach ($confirmedSpouseMembers as $spouseMember) {
+            $candidateIds[] = (int) $spouseMember->id;
+        }
+
+        foreach (array_unique($candidateIds) as $candidateId) {
+            $member = Member::query()
+                ->where('organization_id', $application->organization_id)
+                ->find($candidateId);
+
+            if ($member !== null) {
+                return $member;
+            }
+        }
+
+        return null;
+    }
+
     private function linkSpouseRelationships(MembershipApplication $application, Member $member): void
     {
         $relatedMemberIds = [];
@@ -453,13 +570,12 @@ class MembershipApplicationWorkflowService
         }
 
         // If the original applicant is confirmed after the spouse, find the spouse application by its source reference.
-        $spouseApplications = MembershipApplication::query()
+        $spouseMembers = Member::query()
             ->where('organization_id', $application->organization_id)
-            ->whereNotNull('member_id')
-            ->where('data->member->metadata->spouse_of_application_id', $application->id)
-            ->get(['member_id']);
-        foreach ($spouseApplications as $spouseApplication) {
-            $relatedMemberIds[] = (int) $spouseApplication->member_id;
+            ->where('metadata->spouse_of_application_id', $application->id)
+            ->get(['id']);
+        foreach ($spouseMembers as $spouseMember) {
+            $relatedMemberIds[] = (int) $spouseMember->id;
         }
 
         foreach (array_unique($relatedMemberIds) as $relatedMemberId) {

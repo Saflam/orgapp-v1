@@ -13,6 +13,7 @@ return new class extends Migration {
             $table->string('title');
             $table->string('slug', 120);
             $table->text('description')->nullable();
+            $table->string('family_payment_policy', 30)->default('individual');
             $table->boolean('is_mandatory')->default(true);
             $table->boolean('is_recurring')->default(false);
             $table->string('recurring_period', 30)->nullable();
